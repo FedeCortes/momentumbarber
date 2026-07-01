@@ -1,0 +1,272 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════
+   THEME VARIABLES
+   dark = default (no class on html)
+   light = html.light
+═══════════════════════════════════════════════════════════ */
+:root {
+  /* Gold – base palette */
+  --gold:       201 168 76;
+  --gold-light: 226 201 126;
+  --gold-dark:  160 120 48;
+
+  /* Ink – always dark (for text ON gold) */
+  --ink: 20 15 8;
+
+  /* ── Dark theme surfaces (warm charcoal) ── */
+  --surface-page:   11 10 8;
+  --surface-card:   20 18 15;
+  --surface-input:  32 29 25;
+  --surface-border: 52 47 41;
+  --surface-raised: 70 63 55;
+
+  /* ── Dark theme text ── */
+  --text-base: 248 244 238;
+
+  /* ── Shadows – layered for depth ── */
+  --sh-card:    0 1px 2px rgba(0,0,0,0.55), 0 4px 18px rgba(0,0,0,0.45);
+  --sh-hover:   0 2px 8px rgba(0,0,0,0.65), 0 8px 28px rgba(0,0,0,0.55);
+  --sh-modal:   0 8px 48px rgba(0,0,0,0.8), 0 2px 8px rgba(0,0,0,0.4);
+  --sh-gold:    0 0 0 1px rgba(201,168,76,0.28);
+  --sh-gold-md: 0 4px 24px rgba(201,168,76,0.14);
+}
+
+html.light {
+  /* Gold – deeper amber for contrast on light backgrounds */
+  --gold:       148 110 18;
+  --gold-light: 178 140 48;
+  --gold-dark:  112 80 6;
+
+  /* ── Light theme surfaces (neutral, clean) ── */
+  --surface-page:   230 230 230;
+  --surface-card:   255 255 255;
+  --surface-input:  218 218 218;
+  --surface-border:  16  16  16;
+  --surface-raised:  40  40  40;
+
+  /* ── Light theme text ── */
+  --text-base: 6 6 6;
+
+  /* ── Shadows – neutral black-based ── */
+  --sh-card:    0 1px 3px rgba(0,0,0,0.13), 0 4px 18px rgba(0,0,0,0.08);
+  --sh-hover:   0 4px 18px rgba(0,0,0,0.17), 0 1px 4px rgba(0,0,0,0.10);
+  --sh-modal:   0 8px 48px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.12);
+  --sh-gold:    0 0 0 1px rgba(148,110,18,0.45);
+  --sh-gold-md: 0 4px 24px rgba(148,110,18,0.20);
+}
+
+/* ── Smooth transition on theme switch only ───────────────── */
+html.theme-switching,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition:
+    background-color 0.28s ease,
+    border-color     0.28s ease,
+    color            0.28s ease,
+    box-shadow       0.28s ease !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BASE
+═══════════════════════════════════════════════════════════ */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { -webkit-tap-highlight-color: transparent; }
+
+  body {
+    margin: 0;
+    @apply bg-dark-100 text-cream font-body antialiased;
+    font-size: 15px;
+    line-height: 1.55;
+  }
+
+  #root { min-height: 100svh; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar         { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track   { @apply bg-dark-200; }
+  ::-webkit-scrollbar-thumb   { @apply bg-dark-400 rounded-full; }
+
+  /* Native date picker icon */
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.45);
+    cursor: pointer;
+  }
+
+  html.light input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.2) sepia(0.2);
+  }
+
+  /* Selection color */
+  ::selection { background: rgba(201,168,76,0.3); color: inherit; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMPONENTS
+═══════════════════════════════════════════════════════════ */
+@layer components {
+
+  /* ── Buttons ─────────────────────────────────────────── */
+  .btn-gold {
+    @apply bg-gold font-body font-semibold px-5 py-2.5 rounded-xl
+           hover:bg-gold-light active:scale-[0.97] active:bg-gold-dark
+           transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100
+           text-sm tracking-wide;
+    color: rgb(var(--ink));
+  }
+
+  .btn-outline-gold {
+    @apply border border-gold/60 text-gold font-body font-medium px-5 py-2.5 rounded-xl
+           hover:bg-gold/10 hover:border-gold active:scale-[0.97]
+           transition-all duration-150
+           disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100
+           text-sm;
+  }
+
+  .btn-ghost {
+    @apply text-cream/55 font-body font-medium px-3 py-2 rounded-lg
+           hover:text-cream hover:bg-dark-300/70 active:scale-[0.97]
+           transition-all duration-150 text-sm;
+  }
+
+  /* ── Cards ───────────────────────────────────────────── */
+  .card {
+    @apply bg-dark-200 border border-dark-400/50 rounded-2xl p-5;
+    box-shadow: var(--sh-card);
+  }
+
+  .card-hover {
+    @apply bg-dark-200 border border-dark-400/50 rounded-2xl p-5 cursor-pointer;
+    box-shadow: var(--sh-card);
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  }
+  .card-hover:hover  { @apply border-gold/35; box-shadow: var(--sh-hover); }
+  .card-hover:active { transform: scale(0.99); }
+
+  .card-flat {
+    @apply bg-dark-200 border border-dark-400/40 rounded-2xl p-5;
+  }
+
+  /* ── Inputs ──────────────────────────────────────────── */
+  .input-dark {
+    @apply bg-dark-300/60 border border-dark-400/70 text-cream
+           rounded-xl px-4 py-3 w-full
+           focus:outline-none focus:border-gold/60 focus:bg-dark-300/90
+           focus:ring-2 focus:ring-gold/15
+           transition-all duration-150 font-body text-sm;
+    placeholder-color: rgba(var(--text-base), 0.3);
+  }
+  .input-dark::placeholder { color: rgba(var(--text-base) / 0.35); opacity: 1; }
+
+  .label {
+    @apply text-cream/50 text-[11px] font-bold uppercase tracking-widest mb-2 block;
+  }
+
+  /* ── Badges ──────────────────────────────────────────── */
+  .badge-active {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
+           bg-emerald-500/10 border border-emerald-500/20
+           text-emerald-500 text-xs font-semibold;
+  }
+  .badge-inactive {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
+           bg-red-500/10 border border-red-500/20
+           text-red-400 text-xs font-semibold;
+  }
+  .badge-pending {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full
+           bg-amber-500/10 border border-amber-500/20
+           text-amber-500 text-xs font-semibold;
+  }
+
+  /* ── Stat Cards ──────────────────────────────────────── */
+  .stat-card {
+    @apply bg-dark-200 border border-dark-400/50 rounded-2xl p-5 flex flex-col gap-1.5;
+    box-shadow: var(--sh-card);
+  }
+  .stat-value { @apply font-display text-3xl text-gold leading-none font-bold; }
+  .stat-label { @apply text-cream/50 text-[11px] font-bold uppercase tracking-wider; }
+
+  /* ── Typography ──────────────────────────────────────── */
+  .section-title { @apply font-display text-2xl text-cream tracking-tight font-bold; }
+  .section-sub   { @apply text-cream/55 text-sm mt-0.5 font-body; }
+  .page-eyebrow  { @apply text-gold/80 text-[11px] font-bold uppercase tracking-widest mb-1; }
+
+  /* ── Dividers ────────────────────────────────────────── */
+  .divider { @apply border-t border-dark-400/50 my-4; }
+
+  .section-divider { @apply flex items-center gap-3 my-6; }
+  .section-divider::before,
+  .section-divider::after {
+    content: '';
+    @apply flex-1 border-t border-dark-400/40;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   LIGHT MODE OVERRIDES — things Tailwind can't do with vars
+═══════════════════════════════════════════════════════════ */
+
+/* Scrollbar on light */
+html.light ::-webkit-scrollbar-track { background: rgb(var(--surface-page)); }
+html.light ::-webkit-scrollbar-thumb { background: rgb(0 0 0 / 0.35); border-radius: 9999px; }
+
+/* Sidebar */
+html.light aside { border-right-color: rgb(var(--surface-border) / 0.25); }
+
+/* Cards – borde oscuro visible en light */
+html.light .card,
+html.light .card-flat,
+html.light .stat-card {
+  border-color: rgb(var(--surface-border) / 0.28);
+}
+html.light .card-hover {
+  border-color: rgb(var(--surface-border) / 0.28);
+}
+html.light .card-hover:hover {
+  border-color: rgb(var(--gold) / 0.60);
+}
+
+/* Inputs – fondo gris y borde oscuro en light */
+html.light .input-dark {
+  background: rgb(var(--surface-input));
+  border-color: rgb(var(--surface-border) / 0.38);
+  color: rgb(var(--text-base));
+}
+html.light .input-dark:focus {
+  background: rgb(var(--surface-card));
+  border-color: rgb(var(--gold) / 0.75);
+  box-shadow: 0 0 0 3px rgb(var(--gold) / 0.13);
+}
+html.light .input-dark::placeholder {
+  color: rgb(var(--text-base) / 0.35);
+}
+
+/* btn-ghost en light */
+html.light .btn-ghost {
+  color: rgb(var(--text-base) / 0.45);
+}
+html.light .btn-ghost:hover {
+  color: rgb(var(--text-base) / 0.80);
+  background: rgb(var(--surface-border) / 0.08);
+}
+
+/* page-eyebrow en light */
+html.light .page-eyebrow {
+  color: rgb(var(--gold));
+}
+
+/* Dividers en light – más definidos */
+html.light .divider {
+  border-color: rgb(var(--surface-border) / 0.18);
+}
+html.light .section-divider::before,
+html.light .section-divider::after {
+  border-color: rgb(var(--surface-border) / 0.15);
+}
