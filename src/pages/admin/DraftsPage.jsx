@@ -51,8 +51,9 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
         const totalServices = Number(draft.total_services) || 0
         const totalProducts = Number(draft.total_products) || 0
         const totalDrinks   = Number(draft.total_drinks) || 0
+        const draftSurcharge = Number(draft.surcharge_amt) || 0
         const barberEarnings = totalServices * (commission / 100) + tipAmt
-        const shopEarnings   = totalServices * (1 - commission / 100) + totalProducts + totalDrinks
+        const shopEarnings   = totalServices * (1 - commission / 100) + totalProducts + totalDrinks + draftSurcharge
 
         const { data: sale, error: saleErr } = await supabase.from('sales').insert({
           tenant_id:         draft.tenant_id,
@@ -64,6 +65,7 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
           total_drinks:      totalDrinks,
           barber_earnings:   barberEarnings,
           shop_earnings:     shopEarnings,
+          surcharge_amt:     draftSurcharge,
           sale_date:         draft.draft_date,
         }).select().single()
 
@@ -131,11 +133,15 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
     }, 0)
   }
 
-  const eTotalSvc = calcAmt(selServices, catalog.services)
-  const eTotalPrd = calcAmt(selProducts, catalog.products)
-  const eTotalDrk = calcAmt(selDrinks,   catalog.drinks)
-  const eTipAmt   = Number(editTip) || 0
-  const eTotal    = eTotalSvc + eTotalPrd + eTotalDrk + eTipAmt
+  const eTotalSvc    = calcAmt(selServices, catalog.services)
+  const eTotalPrd    = calcAmt(selProducts, catalog.products)
+  const eTotalDrk    = calcAmt(selDrinks,   catalog.drinks)
+  const eTipAmt      = Number(editTip) || 0
+  const eBase        = eTotalSvc + eTotalPrd + eTotalDrk
+  const eSelectedPm  = paymentMethods.find(p => p.id === editPayment)
+  const eSurchargePct = Number(eSelectedPm?.surcharge_pct) || 0
+  const eSurchargeAmt = eSurchargePct > 0 ? Math.round(eBase * eSurchargePct / 100) : 0
+  const eTotal       = eBase + eTipAmt + eSurchargeAmt
 
   async function handleSave() {
     if (!Object.keys(selServices).length && !Object.keys(selProducts).length && !Object.keys(selDrinks).length)
@@ -149,6 +155,7 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
         total_services:    eTotalSvc,
         total_products:    eTotalPrd,
         total_drinks:      eTotalDrk,
+        surcharge_amt:     eSurchargeAmt,
       }).eq('id', draft.id)
 
       const newItems = [
@@ -197,7 +204,7 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
         <div className="flex items-center gap-2 px-4 py-3">
           <button onClick={toggle} className="flex-1 text-left">
             <div className="flex items-center gap-2">
-              <span className="font-display text-base text-gold">${Number(draft.total).toLocaleString('es-AR')}</span>
+              <span className="font-display text-base text-gold">${(Number(draft.total) + Number(draft.surcharge_amt || 0)).toLocaleString('es-AR')}</span>
               <span className={`text-xs ${statusColor}`}>{statusLabel}</span>
             </div>
             <div className="flex gap-3 mt-0.5 flex-wrap">
@@ -236,6 +243,12 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
                   <div className="flex justify-between text-sm border-t border-dark-400 pt-1 mt-1">
                     <span className="text-cream/60">Propina</span>
                     <span className="text-gold">${Number(draft.tip).toLocaleString('es-AR')}</span>
+                  </div>
+                )}
+                {Number(draft.surcharge_amt) > 0 && (
+                  <div className="flex justify-between text-sm border-t border-dark-400 pt-1 mt-1">
+                    <span className="text-cream/60">Recargo {pm?.surcharge_pct}% ({pm?.name})</span>
+                    <span className="text-amber-400">+${Number(draft.surcharge_amt).toLocaleString('es-AR')}</span>
                   </div>
                 )}
               </div>
@@ -317,9 +330,15 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
                 <input type="number" min="0" className="input-dark" value={editTip} onChange={e => setEditTip(e.target.value)} placeholder="0" />
               </div>
             </div>
+            {eSurchargeAmt > 0 && (
+              <div className="flex justify-between text-sm text-amber-400/80 bg-amber-400/8 border border-amber-400/15 rounded-lg px-3 py-2">
+                <span>Recargo {eSurchargePct}% ({eSelectedPm?.name})</span>
+                <span>+${eSurchargeAmt.toLocaleString('es-AR')}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between pt-1">
               <div>
-                <p className="text-cream/40 text-xs">Total</p>
+                <p className="text-cream/40 text-xs">Total{eSurchargeAmt > 0 ? ' a cobrar' : ''}</p>
                 <p className="font-display text-2xl text-gold">${eTotal.toLocaleString('es-AR')}</p>
               </div>
               <div className="flex gap-2">
@@ -456,11 +475,15 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
     }, 0)
   }
 
-  const totalServices = calcTotal(selServices, catalog.services)
-  const totalProducts = calcTotal(selProducts, catalog.products)
-  const totalDrinks   = calcTotal(selDrinks,   catalog.drinks)
-  const tipAmt        = Number(editTip) || 0
-  const grandTotal    = totalServices + totalProducts + totalDrinks + tipAmt
+  const totalServices  = calcTotal(selServices, catalog.services)
+  const totalProducts  = calcTotal(selProducts, catalog.products)
+  const totalDrinks    = calcTotal(selDrinks,   catalog.drinks)
+  const tipAmt         = Number(editTip) || 0
+  const sBase          = totalServices + totalProducts + totalDrinks
+  const sSelectedPm    = paymentMethods.find(p => p.id === editPayment)
+  const sSurchargePct  = Number(sSelectedPm?.surcharge_pct) || 0
+  const sSurchargeAmt  = sSurchargePct > 0 ? Math.round(sBase * sSurchargePct / 100) : 0
+  const grandTotal     = sBase + tipAmt + sSurchargeAmt
 
   const selectedBarber   = barbers.find(b => b.id === editBarber)
   const barberEarningsPreview = selectedBarber
@@ -475,7 +498,7 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
     try {
       const commission     = selectedBarber?.commission_pct || 0
       const barberEarnings = totalServices * (commission / 100) + tipAmt
-      const shopEarnings   = totalServices * (1 - commission / 100) + totalProducts + totalDrinks
+      const shopEarnings   = totalServices * (1 - commission / 100) + totalProducts + totalDrinks + sSurchargeAmt
 
       await supabase.from('sales').update({
         payment_method_id: editPayment || null,
@@ -486,6 +509,7 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
         total_drinks:      totalDrinks,
         barber_earnings:   barberEarnings,
         shop_earnings:     shopEarnings,
+        surcharge_amt:     sSurchargeAmt,
       }).eq('id', sale.id)
 
       const newItems = [
@@ -531,7 +555,7 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
         <div className="flex items-center gap-2 px-4 py-3">
           <button onClick={toggle} className="flex-1 text-left">
             <div className="flex items-center gap-2">
-              <span className="font-display text-base text-cream">${Number(sale.total).toLocaleString('es-AR')}</span>
+              <span className="font-display text-base text-cream">${(Number(sale.total) + Number(sale.surcharge_amt || 0)).toLocaleString('es-AR')}</span>
               <span className="text-xs text-emerald-400/70">Oficial</span>
             </div>
             <div className="flex gap-3 mt-0.5 flex-wrap">
@@ -574,6 +598,12 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
                   <div className="flex justify-between text-sm border-t border-dark-400 pt-1 mt-1">
                     <span className="text-cream/60">Propina</span>
                     <span className="text-gold">${Number(sale.tip).toLocaleString('es-AR')}</span>
+                  </div>
+                )}
+                {Number(sale.surcharge_amt) > 0 && (
+                  <div className="flex justify-between text-sm border-t border-dark-400 pt-1 mt-1">
+                    <span className="text-cream/60">Recargo {pm?.surcharge_pct}% ({pm?.name})</span>
+                    <span className="text-amber-400">+${Number(sale.surcharge_amt).toLocaleString('es-AR')}</span>
                   </div>
                 )}
               </div>
@@ -663,10 +693,18 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
               </div>
             )}
 
+            {/* Recargo */}
+            {sSurchargeAmt > 0 && (
+              <div className="flex justify-between text-sm text-amber-400/80 bg-amber-400/8 border border-amber-400/15 rounded-lg px-3 py-2">
+                <span>Recargo {sSurchargePct}% ({sSelectedPm?.name})</span>
+                <span>+${sSurchargeAmt.toLocaleString('es-AR')}</span>
+              </div>
+            )}
+
             {/* Total + acciones */}
             <div className="flex items-center justify-between pt-1">
               <div>
-                <p className="text-cream/40 text-xs">Total</p>
+                <p className="text-cream/40 text-xs">Total{sSurchargeAmt > 0 ? ' a cobrar' : ''}</p>
                 <p className="font-display text-2xl text-gold">${grandTotal.toLocaleString('es-AR')}</p>
               </div>
               <div className="flex gap-2">
@@ -697,8 +735,8 @@ function BarberSection({ barber, drafts, sales, barbers, paymentMethods, isAdmin
   const [tab, setTab] = useState('drafts')
 
   const pendingCount  = drafts.filter(d => d.status === 'pending').length
-  const draftTotal    = drafts.filter(d => d.status !== 'discarded').reduce((s, d) => s + Number(d.total), 0)
-  const officialTotal = sales.reduce((s, r) => s + Number(r.total), 0)
+  const draftTotal    = drafts.filter(d => d.status !== 'discarded').reduce((s, d) => s + Number(d.total) + Number(d.surcharge_amt || 0), 0)
+  const officialTotal = sales.reduce((s, r) => s + Number(r.total) + Number(r.surcharge_amt || 0), 0)
   const match         = draftTotal > 0 && officialTotal > 0 && draftTotal === officialTotal
 
   return (

@@ -164,6 +164,149 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
   )
 }
 
+function PaymentMethodSection({ tenantId }) {
+  const [items, setItems]               = useState([])
+  const [quickName, setQuickName]       = useState('')
+  const [quickSurcharge, setQuickSurcharge] = useState('')
+  const [adding, setAdding]             = useState(false)
+  const [editId, setEditId]             = useState(null)
+  const [editName, setEditName]         = useState('')
+  const [editSurcharge, setEditSurcharge] = useState('')
+  const [deleteId, setDeleteId]         = useState(null)
+  const nameRef = useRef(null)
+
+  useEffect(() => { load() }, [tenantId])
+
+  async function load() {
+    const { data } = await supabase.from('payment_methods').select('*').eq('tenant_id', tenantId).order('sort_order').order('name')
+    setItems(data || [])
+  }
+
+  async function quickAdd() {
+    if (!quickName.trim()) return
+    setAdding(true)
+    const { error } = await supabase.from('payment_methods').insert({
+      name: quickName.trim(),
+      tenant_id: tenantId,
+      surcharge_pct: Number(quickSurcharge) || 0,
+    })
+    setAdding(false)
+    if (error) return toast.error(error.message)
+    setQuickName(''); setQuickSurcharge('')
+    nameRef.current?.focus()
+    load()
+  }
+
+  function startEdit(item) {
+    setEditId(item.id)
+    setEditName(item.name)
+    setEditSurcharge(item.surcharge_pct != null ? String(item.surcharge_pct) : '0')
+  }
+
+  async function saveEdit(item) {
+    if (!editName.trim()) return
+    await supabase.from('payment_methods').update({
+      name: editName.trim(),
+      surcharge_pct: Number(editSurcharge) || 0,
+    }).eq('id', item.id)
+    setEditId(null)
+    load()
+  }
+
+  async function handleDelete() {
+    await supabase.from('payment_methods').delete().eq('id', deleteId)
+    toast.success('Eliminado')
+    setDeleteId(null)
+    load()
+  }
+
+  return (
+    <div className="card mb-4">
+      <h3 className="font-display text-lg text-cream mb-1">Métodos de pago</h3>
+      <p className="text-cream/35 text-xs mb-4">El recargo se suma automáticamente al total cuando se usa ese método</p>
+
+      <div className="flex gap-2 mb-4">
+        <input
+          ref={nameRef}
+          className="input-dark flex-1"
+          placeholder="Ej: Tarjeta de crédito"
+          value={quickName}
+          onChange={e => setQuickName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && quickAdd()}
+        />
+        <div className="relative w-28 shrink-0">
+          <input
+            type="number" min="0" max="100" step="0.5"
+            className="input-dark w-full pr-7"
+            placeholder="0"
+            value={quickSurcharge}
+            onChange={e => setQuickSurcharge(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && quickAdd()}
+          />
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-cream/40 text-sm pointer-events-none">%</span>
+        </div>
+        <button onClick={quickAdd} disabled={adding || !quickName.trim()} className="btn-gold px-4 shrink-0 flex items-center gap-1">
+          <Plus size={16} />
+        </button>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-cream/25 text-sm text-center py-2">Sin métodos todavía</p>
+      ) : (
+        <div className="flex flex-col divide-y divide-dark-300">
+          {items.map(item => (
+            <div key={item.id} className="flex items-center gap-3 py-2.5">
+              {editId === item.id ? (
+                <>
+                  <input
+                    className="input-dark flex-1 py-1 text-sm"
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                    autoFocus
+                  />
+                  <div className="relative w-24 shrink-0">
+                    <input
+                      type="number" min="0" max="100" step="0.5"
+                      className="input-dark py-1 text-sm pr-7 w-full"
+                      value={editSurcharge}
+                      onChange={e => setEditSurcharge(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-cream/40 text-xs pointer-events-none">%</span>
+                  </div>
+                  <button onClick={() => saveEdit(item)} className="text-emerald-400 hover:text-emerald-300 p-1"><Check size={16} /></button>
+                  <button onClick={() => setEditId(null)} className="text-cream/30 hover:text-cream/60 p-1"><X size={16} /></button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 text-cream/80 text-sm">{item.name}</span>
+                  {Number(item.surcharge_pct) > 0 ? (
+                    <span className="text-amber-400/80 text-xs font-semibold shrink-0 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full">
+                      +{Number(item.surcharge_pct)}%
+                    </span>
+                  ) : (
+                    <span className="text-cream/20 text-xs shrink-0">sin recargo</span>
+                  )}
+                  <div className="flex gap-0.5 shrink-0">
+                    <button onClick={() => startEdit(item)} className="btn-ghost p-1.5"><Pencil size={14} className="text-cream/40" /></button>
+                    <button onClick={() => setDeleteId(item.id)} className="btn-ghost p-1.5 text-red-400/50 hover:text-red-400"><Trash2 size={14} /></button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete}
+        title="Eliminar método" message="¿Eliminás este método de pago?" danger
+      />
+    </div>
+  )
+}
+
 export default function ConfigPage() {
   const { tenant } = useAuth()
   const [adminPass, setAdminPass] = useState('')
@@ -194,7 +337,7 @@ export default function ConfigPage() {
       <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
       <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice />
       <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice />
-      <CatalogSection title="Métodos de pago" tableName="payment_methods" tenantId={tenant.id} showPrice={false} />
+      <PaymentMethodSection tenantId={tenant.id} />
 
       {/* Seguridad — colapsado por defecto */}
       <div className="card mb-4">

@@ -75,7 +75,7 @@ function TodayDrafts({ barberId, tenantId, paymentMethods, refreshKey }) {
 
   if (drafts.length === 0) return null
 
-  const dayTotal = drafts.reduce((s, d) => s + Number(d.total), 0)
+  const dayTotal = drafts.reduce((s, d) => s + Number(d.total) + Number(d.surcharge_amt || 0), 0)
 
   return (
     <div className="card">
@@ -207,7 +207,11 @@ export default function BarberDraftPage() {
   const totalProducts = calcTotal(selProducts, products)
   const totalDrinks   = calcTotal(selDrinks, drinks)
   const tipAmt        = Number(tip) || 0
-  const grandTotal    = totalServices + totalProducts + totalDrinks + tipAmt
+  const baseTotal     = totalServices + totalProducts + totalDrinks
+  const selectedPm    = paymentMethods.find(p => p.id === paymentMethod)
+  const surchargePct  = Number(selectedPm?.surcharge_pct) || 0
+  const surchargeAmt  = surchargePct > 0 ? Math.round(baseTotal * surchargePct / 100) : 0
+  const grandTotal    = baseTotal + tipAmt + surchargeAmt
 
   function buildItems() {
     return [
@@ -241,6 +245,7 @@ export default function BarberDraftPage() {
         total_services: totalServices,
         total_products: totalProducts,
         total_drinks: totalDrinks,
+        surcharge_amt: surchargeAmt,
       }
 
       if (editId) {
@@ -387,6 +392,11 @@ export default function BarberDraftPage() {
               }`}
             >
               {pm.name}
+              {Number(pm.surcharge_pct) > 0 && (
+                <span className={`ml-1 text-[10px] font-bold ${paymentMethod === pm.id ? 'text-amber-400' : 'text-amber-400/50'}`}>
+                  +{Number(pm.surcharge_pct)}%
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -428,8 +438,16 @@ export default function BarberDraftPage() {
         }}
       >
         <div className="max-w-lg mx-auto px-4 pt-2.5 pb-3">
+          {surchargeAmt > 0 && (
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-amber-400/60 text-xs">Recargo {surchargePct}% ({selectedPm?.name})</span>
+              <span className="text-amber-400 text-xs font-semibold">+${surchargeAmt.toLocaleString('es-AR')}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between mb-2">
-            <span className="text-cream/40 text-xs font-medium uppercase tracking-wide">Total</span>
+            <span className="text-cream/40 text-xs font-medium uppercase tracking-wide">
+              {surchargeAmt > 0 ? 'Total a cobrar' : 'Total'}
+            </span>
             <span className="font-display text-3xl text-gold">${grandTotal.toLocaleString('es-AR')}</span>
           </div>
           <button

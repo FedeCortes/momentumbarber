@@ -116,7 +116,11 @@ export default function SalesPage() {
   const totalProducts = calcTotal(selProducts, products)
   const totalDrinks   = calcTotal(selDrinks, drinks)
   const tipAmt        = Number(tip) || 0
-  const grandTotal    = totalServices + totalProducts + totalDrinks + tipAmt
+  const baseTotal     = totalServices + totalProducts + totalDrinks
+  const selectedPm    = paymentMethods.find(p => p.id === paymentMethod)
+  const surchargePct  = Number(selectedPm?.surcharge_pct) || 0
+  const surchargeAmt  = surchargePct > 0 ? Math.round(baseTotal * surchargePct / 100) : 0
+  const grandTotal    = baseTotal + tipAmt + surchargeAmt
 
   function buildItems(sel, catalog, type) {
     return Object.entries(sel).map(([id, qty]) => {
@@ -134,8 +138,8 @@ export default function SalesPage() {
       const barber = barbers.find(b => b.id === selectedBarber)
       const barberEarnings = barber ? totalServices * (barber.commission_pct / 100) + tipAmt : 0
       const shopEarnings   = barber
-        ? totalServices * (1 - barber.commission_pct / 100) + totalProducts + totalDrinks
-        : totalServices + totalProducts + totalDrinks
+        ? totalServices * (1 - barber.commission_pct / 100) + totalProducts + totalDrinks + surchargeAmt
+        : totalServices + totalProducts + totalDrinks + surchargeAmt
 
       const items = [
         ...buildItems(selServices, services, 'service'),
@@ -153,6 +157,7 @@ export default function SalesPage() {
         total_drinks: totalDrinks,
         barber_earnings: barberEarnings,
         shop_earnings: shopEarnings,
+        surcharge_amt: surchargeAmt,
         sale_date: new Date().toISOString().split('T')[0],
       }).select().single()
       if (error) throw error
@@ -309,6 +314,11 @@ export default function SalesPage() {
               }`}
             >
               {pm.name}
+              {Number(pm.surcharge_pct) > 0 && (
+                <span className={`ml-1.5 text-xs font-bold ${paymentMethod === pm.id ? 'text-amber-400' : 'text-amber-400/50'}`}>
+                  +{Number(pm.surcharge_pct)}%
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -326,6 +336,7 @@ export default function SalesPage() {
             {totalProducts > 0 && <span>Vitrina: ${totalProducts.toLocaleString('es-AR')}</span>}
             {totalDrinks > 0 && <span>Bebidas: ${totalDrinks.toLocaleString('es-AR')}</span>}
             {tipAmt > 0 && <span>Propina: ${tipAmt.toLocaleString('es-AR')}</span>}
+            {surchargeAmt > 0 && <span className="text-amber-400/60">Recargo {surchargePct}%: +${surchargeAmt.toLocaleString('es-AR')}</span>}
           </div>
         )}
         <div className="flex gap-2">
