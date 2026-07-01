@@ -11,11 +11,24 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Link } from 'react-router-dom'
 
-// ── Borrador (solo lectura para aprobar/descartar) ────────────────────────────
-function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate }) {
+// ── Borrador — con edición y borrado para admin ───────────────────────────────
+function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, isAdmin, onDelete }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState(null)
   const [working, setWorking] = useState(false)
+  const [editOpen, setEditOpen]     = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [loadingEdit, setLoadingEdit] = useState(false)
+
+  const [catalog, setCatalog]         = useState({ services: [], products: [], drinks: [] })
+  const [selServices, setSelServices] = useState({})
+  const [selProducts, setSelProducts] = useState({})
+  const [selDrinks, setSelDrinks]     = useState({})
+  const [editBarber, setEditBarber]   = useState('')
+  const [editPayment, setEditPayment] = useState('')
+  const [editTip, setEditTip]         = useState('')
+
   const pm = paymentMethods.find(p => p.id === draft.payment_method_id)
 
   async function toggle() {
@@ -75,69 +88,260 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate }) 
     }
   }
 
+  async function openEdit() {
+    setLoadingEdit(true)
+    try {
+      const [{ data: svcs }, { data: prds }, { data: drks }, { data: draftItems }] = await Promise.all([
+        supabase.from('services').select('*').eq('tenant_id', draft.tenant_id).eq('is_active', true).order('name'),
+        supabase.from('products').select('*').eq('tenant_id', draft.tenant_id).eq('is_active', true).order('name'),
+        supabase.from('drinks').select('*').eq('tenant_id', draft.tenant_id).eq('is_active', true).order('name'),
+        supabase.from('draft_items').select('*').eq('draft_id', draft.id),
+      ])
+      setCatalog({ services: svcs || [], products: prds || [], drinks: drks || [] })
+      const selSvc = {}, selPrd = {}, selDrk = {}
+      ;(draftItems || []).forEach(it => {
+        if (it.item_type === 'service') selSvc[it.item_id] = it.quantity
+        if (it.item_type === 'product') selPrd[it.item_id] = it.quantity
+        if (it.item_type === 'drink')   selDrk[it.item_id] = it.quantity
+      })
+      setSelServices(selSvc)
+      setSelProducts(selPrd)
+      setSelDrinks(selDrk)
+      setEditBarber(draft.barber_id || '')
+      setEditPayment(draft.payment_method_id || '')
+      setEditTip(Number(draft.tip) > 0 ? String(draft.tip) : '')
+      setEditOpen(true)
+    } finally {
+      setLoadingEdit(false)
+    }
+  }
+
+  function toggleItem(setter, item, delta) {
+    setter(prev => {
+      const next = Math.max(0, (prev[item.id] || 0) + delta)
+      if (next === 0) { const { [item.id]: _, ...rest } = prev; return rest }
+      return { ...prev, [item.id]: next }
+    })
+  }
+
+  function calcAmt(sel, list) {
+    return Object.entries(sel).reduce((sum, [id, qty]) => {
+      const it = list.find(i => i.id === id)
+      return sum + (it ? Number(it.price) * qty : 0)
+    }, 0)
+  }
+
+  const eTotalSvc = calcAmt(selServices, catalog.services)
+  const eTotalPrd = calcAmt(selProducts, catalog.products)
+  const eTotalDrk = calcAmt(selDrinks,   catalog.drinks)
+  const eTipAmt   = Number(editTip) || 0
+  const eTotal    = eTotalSvc + eTotalPrd + eTotalDrk + eTipAmt
+
+  async function handleSave() {
+    if (!Object.keys(selServices).length && !Object.keys(selProducts).length && !Object.keys(selDrinks).length)
+      return toast.error('Agregá al menos un ítem')
+    setSaving(true)
+    try {
+      await supabase.from('drafts').update({
+        barber_id:         editBarber  || null,
+        payment_method_id: editPayment || null,
+        tip:               eTipAmt,
+        total_services:    eTotalSvc,
+        total_products:    eTotalPrd,
+        total_drinks:      eTotalDrk,
+      }).eq('id', draft.id)
+
+      const newItems = [
+        ...Object.entries(selServices).map(([id, qty]) => {
+          const it = catalog.services.find(s => s.id === id)
+          return { draft_id: draft.id, item_type: 'service', item_id: id, name: it.name, price: it.price, quantity: qty }
+        }),
+        ...Object.entries(selProducts).map(([id, qty]) => {
+          const it = catalog.products.find(p => p.id === id)
+          return { draft_id: draft.id, item_type: 'product', item_id: id, name: it.name, price: it.price, quantity: qty }
+        }),
+        ...Object.entries(selDrinks).map(([id, qty]) => {
+          const it = catalog.drinks.find(d => d.id === id)
+          return { draft_id: draft.id, item_type: 'drink', item_id: id, name: it.name, price: it.price, quantity: qty }
+        }),
+      ]
+
+      await supabase.from('draft_items').delete().eq('draft_id', draft.id)
+      if (newItems.length) await supabase.from('draft_items').insert(newItems)
+
+      toast.success('Borrador actualizado')
+      setEditOpen(false)
+      setItems(null)
+      onStatusChange()
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    await supabase.from('draft_items').delete().eq('draft_id', draft.id)
+    await supabase.from('drafts').delete().eq('id', draft.id)
+    toast.success('Borrador eliminado')
+    setDeleteOpen(false)
+    onDelete?.()
+  }
+
   const statusColor = { pending: 'text-amber-400', approved: 'text-emerald-400', discarded: 'text-cream/25' }[draft.status]
   const statusLabel = { pending: 'Pendiente', approved: 'Aprobado', discarded: 'Descartado' }[draft.status]
 
   return (
-    <div className={`border border-dark-400 rounded-xl overflow-hidden ${draft.status === 'discarded' ? 'opacity-40' : ''}`}>
-      <button onClick={toggle} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-dark-300/30 transition-colors">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-display text-base text-gold">${Number(draft.total).toLocaleString('es-AR')}</span>
-            <span className={`text-xs ${statusColor}`}>{statusLabel}</span>
-          </div>
-          <div className="flex gap-3 mt-0.5 flex-wrap">
-            {showDate && <span className="text-gold/50 text-xs">{format(new Date(draft.draft_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
-            <span className="text-cream/30 text-xs">{pm?.name || '—'}</span>
-            <span className="text-cream/30 text-xs">{format(new Date(draft.created_at), 'HH:mm')}</span>
-            {Number(draft.tip) > 0 && <span className="text-cream/30 text-xs">Propina ${Number(draft.tip).toLocaleString('es-AR')}</span>}
-          </div>
-        </div>
-        {open ? <ChevronUp size={14} className="text-cream/30 shrink-0" /> : <ChevronDown size={14} className="text-cream/30 shrink-0" />}
-      </button>
-
-      {open && (
-        <div className="border-t border-dark-400 px-4 py-3">
-          {items && items.length > 0 ? (
-            <div className="flex flex-col gap-1 mb-3">
-              {items.map(it => (
-                <div key={it.id} className="flex justify-between text-sm">
-                  <span className="text-cream/60">{it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}</span>
-                  <span className="text-cream/40">${Number(it.subtotal).toLocaleString('es-AR')}</span>
-                </div>
-              ))}
-              {Number(draft.tip) > 0 && (
-                <div className="flex justify-between text-sm border-t border-dark-400 pt-1 mt-1">
-                  <span className="text-cream/60">Propina</span>
-                  <span className="text-gold">${Number(draft.tip).toLocaleString('es-AR')}</span>
-                </div>
-              )}
+    <>
+      <div className={`border border-dark-400 rounded-xl overflow-hidden ${draft.status === 'discarded' ? 'opacity-40' : ''}`}>
+        <div className="flex items-center gap-2 px-4 py-3">
+          <button onClick={toggle} className="flex-1 text-left">
+            <div className="flex items-center gap-2">
+              <span className="font-display text-base text-gold">${Number(draft.total).toLocaleString('es-AR')}</span>
+              <span className={`text-xs ${statusColor}`}>{statusLabel}</span>
             </div>
-          ) : (
-            <p className="text-cream/25 text-xs mb-3">Sin detalle de ítems</p>
-          )}
-
-          {draft.status === 'pending' && (
-            <div className="flex gap-2">
-              <button
-                disabled={working}
-                onClick={() => updateStatus('discarded')}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs hover:bg-red-500/10 transition-colors disabled:opacity-50"
-              >
-                <X size={13} /> Descartar
+            <div className="flex gap-3 mt-0.5 flex-wrap">
+              {showDate && <span className="text-gold/50 text-xs">{format(new Date(draft.draft_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
+              <span className="text-cream/30 text-xs">{pm?.name || '—'}</span>
+              <span className="text-cream/30 text-xs">{format(new Date(draft.created_at), 'HH:mm')}</span>
+              {Number(draft.tip) > 0 && <span className="text-cream/30 text-xs">Propina ${Number(draft.tip).toLocaleString('es-AR')}</span>}
+            </div>
+          </button>
+          {isAdmin && draft.status === 'pending' && (
+            <div className="flex gap-1 shrink-0">
+              <button onClick={openEdit} disabled={loadingEdit} className="btn-ghost p-1.5">
+                <Pencil size={14} className="text-cream/40 hover:text-cream/70" />
               </button>
-              <button
-                disabled={working}
-                onClick={() => updateStatus('approved')}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-500/30 text-emerald-400 text-xs hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
-              >
-                <Check size={13} /> {working ? 'Procesando...' : 'Aprobar → Oficial'}
+              <button onClick={() => setDeleteOpen(true)} className="btn-ghost p-1.5 text-red-400/50 hover:text-red-400">
+                <Trash2 size={14} />
               </button>
             </div>
           )}
+          <button onClick={toggle} className="shrink-0">
+            {open ? <ChevronUp size={14} className="text-cream/30" /> : <ChevronDown size={14} className="text-cream/30" />}
+          </button>
         </div>
-      )}
-    </div>
+
+        {open && (
+          <div className="border-t border-dark-400 px-4 py-3">
+            {items && items.length > 0 ? (
+              <div className="flex flex-col gap-1 mb-3">
+                {items.map(it => (
+                  <div key={it.id} className="flex justify-between text-sm">
+                    <span className="text-cream/60">{it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}</span>
+                    <span className="text-cream/40">${Number(it.subtotal).toLocaleString('es-AR')}</span>
+                  </div>
+                ))}
+                {Number(draft.tip) > 0 && (
+                  <div className="flex justify-between text-sm border-t border-dark-400 pt-1 mt-1">
+                    <span className="text-cream/60">Propina</span>
+                    <span className="text-gold">${Number(draft.tip).toLocaleString('es-AR')}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-cream/25 text-xs mb-3">Sin detalle de ítems</p>
+            )}
+
+            {draft.status === 'pending' && (
+              <div className="flex gap-2">
+                <button
+                  disabled={working}
+                  onClick={() => updateStatus('discarded')}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                >
+                  <X size={13} /> Descartar
+                </button>
+                <button
+                  disabled={working}
+                  onClick={() => updateStatus('approved')}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-500/30 text-emerald-400 text-xs hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+                >
+                  <Check size={13} /> {working ? 'Procesando...' : 'Aprobar → Oficial'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modal edición del borrador */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar borrador" size="md">
+        <div className="flex flex-col gap-5">
+          {catalog.services.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="label mb-0">Servicios</label>
+                {eTotalSvc > 0 && <span className="text-gold text-sm font-semibold">${eTotalSvc.toLocaleString('es-AR')}</span>}
+              </div>
+              <EditItemPicker items={catalog.services} selected={selServices} onToggle={(it, d) => toggleItem(setSelServices, it, d)} />
+            </div>
+          )}
+          {catalog.products.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="label mb-0">Vitrina</label>
+                {eTotalPrd > 0 && <span className="text-gold text-sm font-semibold">${eTotalPrd.toLocaleString('es-AR')}</span>}
+              </div>
+              <EditItemPicker items={catalog.products} selected={selProducts} onToggle={(it, d) => toggleItem(setSelProducts, it, d)} />
+            </div>
+          )}
+          {catalog.drinks.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="label mb-0">Bebidas</label>
+                {eTotalDrk > 0 && <span className="text-gold text-sm font-semibold">${eTotalDrk.toLocaleString('es-AR')}</span>}
+              </div>
+              <EditItemPicker items={catalog.drinks} selected={selDrinks} onToggle={(it, d) => toggleItem(setSelDrinks, it, d)} />
+            </div>
+          )}
+          <div className="border-t border-dark-400/40 pt-4 flex flex-col gap-4">
+            <div>
+              <label className="label">Barbero</label>
+              <select className="input-dark" value={editBarber} onChange={e => setEditBarber(e.target.value)}>
+                <option value="">Sin barbero</option>
+                {barbers.map(b => <option key={b.id} value={b.id}>{b.name} ({b.commission_pct}%)</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Método de pago</label>
+              <select className="input-dark" value={editPayment} onChange={e => setEditPayment(e.target.value)}>
+                <option value="">—</option>
+                {paymentMethods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Propina</label>
+              <div className="flex items-center gap-2">
+                <span className="text-cream/40 text-sm">$</span>
+                <input type="number" min="0" className="input-dark" value={editTip} onChange={e => setEditTip(e.target.value)} placeholder="0" />
+              </div>
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <div>
+                <p className="text-cream/40 text-xs">Total</p>
+                <p className="font-display text-2xl text-gold">${eTotal.toLocaleString('es-AR')}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setEditOpen(false)} className="btn-ghost">Cancelar</button>
+                <button onClick={handleSave} disabled={saving} className="btn-gold">
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleDelete}
+        title="Eliminar borrador"
+        message="¿Eliminás este borrador? Esta acción no se puede deshacer."
+        danger
+      />
+    </>
   )
 }
 
@@ -542,7 +746,7 @@ function BarberSection({ barber, drafts, sales, barbers, paymentMethods, isAdmin
           ? <p className="text-cream/25 text-sm text-center py-3">Sin borradores este día</p>
           : <div className="flex flex-col gap-2">
               {drafts.map(d => (
-                <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onStatusChange={onRefresh} showDate={!isSingle} />
+                <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onStatusChange={onRefresh} showDate={!isSingle} isAdmin={isAdmin} onDelete={onRefresh} />
               ))}
             </div>
       ) : (
@@ -608,12 +812,13 @@ export default function DraftsPage() {
     setLoading(false)
   }
 
-  const activeBarbers = barbers.filter(b =>
+  const activeBarbers   = barbers.filter(b =>
     drafts.some(d => d.barber_id === b.id) || sales.some(s => s.barber_id === b.id)
   )
-  const shopOnlySales = sales.filter(s => !s.barber_id)
-  const totalPending  = drafts.filter(d => d.status === 'pending').length
-  const isSingle      = from === to
+  const shopOnlySales   = sales.filter(s => !s.barber_id)
+  const orphanDrafts    = drafts.filter(d => !d.barber_id)
+  const totalPending    = drafts.filter(d => d.status === 'pending').length
+  const isSingle        = from === to
 
   return (
     <div>
@@ -638,7 +843,7 @@ export default function DraftsPage() {
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : activeBarbers.length === 0 && shopOnlySales.length === 0 ? (
+      ) : activeBarbers.length === 0 && shopOnlySales.length === 0 && orphanDrafts.length === 0 ? (
         <EmptyState icon={FileText} title="Sin actividad este día" description="No hay borradores ni ventas registradas para esta fecha" />
       ) : (
         <>
@@ -655,6 +860,25 @@ export default function DraftsPage() {
               onRefresh={load}
             />
           ))}
+
+          {orphanDrafts.length > 0 && (
+            <div className="card mb-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-dark-300 flex items-center justify-center shrink-0">
+                  <FileText size={18} className="text-amber-400/60" />
+                </div>
+                <div>
+                  <p className="font-medium text-cream">Borradores sin barbero</p>
+                  <p className="text-cream/40 text-xs">Registrados sin asignar a un barbero</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                {orphanDrafts.map(d => (
+                  <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onStatusChange={load} showDate={!isSingle} isAdmin={isAdmin} onDelete={load} />
+                ))}
+              </div>
+            </div>
+          )}
 
           {shopOnlySales.length > 0 && (
             <div className="card mb-4">

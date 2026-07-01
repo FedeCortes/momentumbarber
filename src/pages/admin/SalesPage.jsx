@@ -61,7 +61,7 @@ function ShopBadge() {
 }
 
 export default function SalesPage() {
-  const { tenant, isAdmin } = useAuth()
+  const { tenant } = useAuth()
   const [barbers, setBarbers] = useState([])
   const [services, setServices] = useState([])
   const [products, setProducts] = useState([])
@@ -125,9 +125,9 @@ export default function SalesPage() {
     })
   }
 
-  async function handleSubmit(asDraft = false) {
+  async function handleSubmit() {
     if (!hasServices && !hasShopItems) return toast.error('Agregá al menos un ítem')
-    if (!asDraft && !paymentMethod) return toast.error('Seleccioná el método de pago')
+    if (!paymentMethod) return toast.error('Seleccioná el método de pago')
     setLoading(true)
 
     try {
@@ -143,37 +143,21 @@ export default function SalesPage() {
         ...buildItems(selDrinks, drinks, 'drink'),
       ]
 
-      if (asDraft) {
-        const { data: draft, error } = await supabase.from('drafts').insert({
-          tenant_id: tenant.id,
-          barber_id: selectedBarber || null,
-          payment_method_id: paymentMethod || null,
-          tip: tipAmt,
-          total_services: totalServices,
-          total_products: totalProducts,
-          total_drinks: totalDrinks,
-          draft_date: new Date().toISOString().split('T')[0],
-        }).select().single()
-        if (error) throw error
-        if (items.length) await supabase.from('draft_items').insert(items.map(i => ({ ...i, draft_id: draft.id })))
-        toast.success('Borrador guardado')
-      } else {
-        const { data: sale, error } = await supabase.from('sales').insert({
-          tenant_id: tenant.id,
-          barber_id: selectedBarber || null,
-          payment_method_id: paymentMethod,
-          tip: tipAmt,
-          total_services: totalServices,
-          total_products: totalProducts,
-          total_drinks: totalDrinks,
-          barber_earnings: barberEarnings,
-          shop_earnings: shopEarnings,
-          sale_date: new Date().toISOString().split('T')[0],
-        }).select().single()
-        if (error) throw error
-        if (items.length) await supabase.from('sale_items').insert(items.map(i => ({ ...i, sale_id: sale.id })))
-        toast.success('¡Venta registrada!')
-      }
+      const { data: sale, error } = await supabase.from('sales').insert({
+        tenant_id: tenant.id,
+        barber_id: selectedBarber || null,
+        payment_method_id: paymentMethod,
+        tip: tipAmt,
+        total_services: totalServices,
+        total_products: totalProducts,
+        total_drinks: totalDrinks,
+        barber_earnings: barberEarnings,
+        shop_earnings: shopEarnings,
+        sale_date: new Date().toISOString().split('T')[0],
+      }).select().single()
+      if (error) throw error
+      if (items.length) await supabase.from('sale_items').insert(items.map(i => ({ ...i, sale_id: sale.id })))
+      toast.success('¡Venta registrada!')
 
       setSaved(true)
       setTimeout(() => {
@@ -345,12 +329,7 @@ export default function SalesPage() {
           </div>
         )}
         <div className="flex gap-2">
-          {isAdmin && (
-            <button onClick={() => handleSubmit(true)} disabled={loading} className="btn-outline-gold flex-1 text-sm">
-              Como borrador
-            </button>
-          )}
-          <button onClick={() => handleSubmit(false)} disabled={loading} className="btn-gold flex-1 text-sm">
+          <button onClick={handleSubmit} disabled={loading} className="btn-gold flex-1 text-sm">
             {loading ? 'Guardando...' : 'Confirmar venta'}
           </button>
         </div>
