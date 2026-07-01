@@ -12,31 +12,31 @@ function ItemPicker({ items, selected, onToggle }) {
     <p className="text-cream/30 text-xs text-center py-3">Sin ítems disponibles</p>
   )
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1.5">
       {items.map(item => {
         const qty = selected[item.id] || 0
         const on  = qty > 0
         return (
           <div
             key={item.id}
-            className={`flex items-center gap-3 px-3 py-3 rounded-xl border transition-all ${
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
               on ? 'border-gold/55 bg-gold/8' : 'border-dark-400/60 bg-dark-300/25'
             }`}
           >
             <button
               onClick={() => onToggle(item, -1)}
               disabled={qty === 0}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-90 ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-90 ${
                 qty > 0 ? 'bg-dark-400/60 text-cream/80' : 'bg-dark-400/20 text-cream/20 cursor-default'
               }`}
             >
-              <Minus size={14} />
+              <Minus size={12} />
             </button>
 
             <button onClick={() => onToggle(item, 1)} className="flex-1 text-left min-w-0">
               <p className={`text-sm font-medium leading-tight ${on ? 'text-cream' : 'text-cream/60'}`}>
                 {item.name}
-                {qty > 1 && <span className="ml-2 text-gold text-xs font-semibold">×{qty}</span>}
+                {qty > 1 && <span className="ml-1.5 text-gold text-xs font-semibold">×{qty}</span>}
               </p>
             </button>
 
@@ -46,11 +46,11 @@ function ItemPicker({ items, selected, onToggle }) {
 
             <button
               onClick={() => onToggle(item, 1)}
-              className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-90 ${
+              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-90 ${
                 on ? 'bg-gold text-ink' : 'bg-dark-400/40 text-cream/55'
               }`}
             >
-              {on ? <Check size={14} strokeWidth={2.5} /> : <Plus size={14} />}
+              {on ? <Check size={13} strokeWidth={2.5} /> : <Plus size={13} />}
             </button>
           </div>
         )
@@ -298,10 +298,10 @@ export default function BarberDraftPage() {
   }
 
   return (
-    <div className="pb-52">
+    <div className="pb-40">
 
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-3">
         {editId ? (
           <div className="flex items-start gap-3">
             <button
@@ -325,8 +325,8 @@ export default function BarberDraftPage() {
 
       {/* Servicios */}
       {services.length > 0 && (
-        <div className="card mb-3">
-          <div className="flex items-center justify-between mb-3">
+        <div className="card !p-3 mb-2">
+          <div className="flex items-center justify-between mb-2">
             <label className="label mb-0">Servicios</label>
             {totalServices > 0 && (
               <span className="text-gold text-sm font-bold">${totalServices.toLocaleString('es-AR')}</span>
@@ -338,8 +338,8 @@ export default function BarberDraftPage() {
 
       {/* Vitrina */}
       {products.length > 0 && (
-        <div className="card mb-3">
-          <div className="flex items-center justify-between mb-3">
+        <div className="card !p-3 mb-2">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <label className="label mb-0">Vitrina</label>
               <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
@@ -356,8 +356,8 @@ export default function BarberDraftPage() {
 
       {/* Bebidas */}
       {drinks.length > 0 && (
-        <div className="card mb-3">
-          <div className="flex items-center justify-between mb-3">
+        <div className="card !p-3 mb-2">
+          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <label className="label mb-0">Bebidas</label>
               <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
@@ -372,15 +372,15 @@ export default function BarberDraftPage() {
         </div>
       )}
 
-      {/* Método de pago */}
-      <div className="card mb-3">
-        <label className="label">Método de pago</label>
-        <div className="flex flex-wrap gap-2">
+      {/* Método de pago + Propina en fila */}
+      <div className="card !p-3 mb-2">
+        <label className="label mb-2">Método de pago</label>
+        <div className="flex flex-wrap gap-1.5 mb-3">
           {paymentMethods.map(pm => (
             <button
               key={pm.id}
               onClick={() => setPaymentMethod(pm.id === paymentMethod ? '' : pm.id)}
-              className={`flex-1 min-w-[100px] px-4 py-3 rounded-xl border text-sm font-semibold transition-all active:scale-95 ${
+              className={`flex-1 min-w-[80px] px-3 py-2 rounded-xl border text-sm font-semibold transition-all active:scale-95 ${
                 paymentMethod === pm.id
                   ? 'border-gold bg-gold/12 text-gold'
                   : 'border-dark-400/60 text-cream/55 bg-dark-300/25'
@@ -390,21 +390,16 @@ export default function BarberDraftPage() {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* Propina */}
-      <div className="card mb-5">
-        <label className="label">
-          Propina{' '}
-          <span className="text-gold/55 font-medium normal-case tracking-normal">— va 100% para vos</span>
+        <label className="label mb-1.5">
+          Propina <span className="text-gold/50 font-medium normal-case tracking-normal">— 100% para vos</span>
         </label>
-        <div className="flex items-center gap-3">
-          <span className="text-cream/40 text-xl font-semibold">$</span>
+        <div className="flex items-center gap-2">
+          <span className="text-cream/40 text-base font-semibold">$</span>
           <input
             type="number"
             min="0"
             inputMode="numeric"
-            className="input-dark text-lg"
+            className="input-dark !py-2"
             placeholder="0"
             value={tip}
             onChange={e => setTip(e.target.value)}
@@ -432,38 +427,21 @@ export default function BarberDraftPage() {
           boxShadow: '0 -4px 20px rgba(0,0,0,0.25)',
         }}
       >
-        <div className="max-w-lg mx-auto px-4 pt-3 pb-4">
-          {/* Desglose rápido */}
-          {grandTotal > 0 && (
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-2.5">
-              {totalServices > 0 && <span className="text-cream/35 text-xs">Servicios ${totalServices.toLocaleString('es-AR')}</span>}
-              {totalProducts > 0 && <span className="text-cream/35 text-xs">Vitrina ${totalProducts.toLocaleString('es-AR')}</span>}
-              {totalDrinks > 0   && <span className="text-cream/35 text-xs">Bebidas ${totalDrinks.toLocaleString('es-AR')}</span>}
-              {tipAmt > 0        && <span className="text-gold/55 text-xs">Propina ${tipAmt.toLocaleString('es-AR')}</span>}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-cream/45 text-sm font-medium">Total del turno</span>
-            <span className="font-display text-4xl text-gold">${grandTotal.toLocaleString('es-AR')}</span>
+        <div className="max-w-lg mx-auto px-4 pt-2.5 pb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-cream/40 text-xs font-medium uppercase tracking-wide">Total</span>
+            <span className="font-display text-3xl text-gold">${grandTotal.toLocaleString('es-AR')}</span>
           </div>
-
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="btn-gold w-full text-base py-3.5"
+            className="btn-gold w-full py-2.5"
           >
             {loading
-              ? (editId ? 'Guardando cambios...' : 'Guardando...')
+              ? 'Guardando...'
               : (editId ? 'Guardar cambios' : 'Guardar registro')
             }
           </button>
-
-          {!editId && (
-            <p className="text-cream/22 text-xs text-center mt-2">
-              El administrador lo revisará
-            </p>
-          )}
         </div>
       </div>
     </div>
