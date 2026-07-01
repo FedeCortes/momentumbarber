@@ -137,6 +137,8 @@ export default function BarberDraftPage() {
   const [saved, setSaved]               = useState(false)
   const [refreshKey, setRefreshKey]     = useState(0)
   const [pendingEditItems, setPendingEditItems] = useState(null)
+  const [showVitrina, setShowVitrina]   = useState(false)
+  const [showBebidas, setShowBebidas]   = useState(false)
 
   // Catálogo
   useEffect(() => {
@@ -186,6 +188,8 @@ export default function BarberDraftPage() {
     setSelProducts(selPrd)
     setSelDrinks(selDrk)
     setPendingEditItems(null)
+    if (Object.keys(selPrd).length > 0) setShowVitrina(true)
+    if (Object.keys(selDrk).length > 0) setShowBebidas(true)
   }, [catalogReady, pendingEditItems])
 
   function toggle(setter, item, delta) {
@@ -344,36 +348,46 @@ export default function BarberDraftPage() {
       {/* Vitrina */}
       {products.length > 0 && (
         <div className="card !p-3 mb-2">
-          <div className="flex items-center justify-between mb-2">
+          <button className="flex items-center justify-between w-full" onClick={() => setShowVitrina(v => !v)}>
             <div className="flex items-center gap-2">
-              <label className="label mb-0">Vitrina</label>
+              <label className="label mb-0 pointer-events-none">Vitrina</label>
               <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
                 <Store size={10} /> 100% local
               </span>
             </div>
-            {totalProducts > 0 && (
-              <span className="text-gold text-sm font-bold">${totalProducts.toLocaleString('es-AR')}</span>
-            )}
-          </div>
-          <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} />
+            <div className="flex items-center gap-2 shrink-0">
+              {totalProducts > 0 && <span className="text-gold text-sm font-bold">${totalProducts.toLocaleString('es-AR')}</span>}
+              {showVitrina ? <ChevronUp size={14} className="text-cream/35" /> : <ChevronDown size={14} className="text-cream/35" />}
+            </div>
+          </button>
+          {showVitrina && (
+            <div className="mt-2">
+              <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} />
+            </div>
+          )}
         </div>
       )}
 
       {/* Bebidas */}
       {drinks.length > 0 && (
         <div className="card !p-3 mb-2">
-          <div className="flex items-center justify-between mb-2">
+          <button className="flex items-center justify-between w-full" onClick={() => setShowBebidas(v => !v)}>
             <div className="flex items-center gap-2">
-              <label className="label mb-0">Bebidas</label>
+              <label className="label mb-0 pointer-events-none">Bebidas</label>
               <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
                 <Store size={10} /> 100% local
               </span>
             </div>
-            {totalDrinks > 0 && (
-              <span className="text-gold text-sm font-bold">${totalDrinks.toLocaleString('es-AR')}</span>
-            )}
-          </div>
-          <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} />
+            <div className="flex items-center gap-2 shrink-0">
+              {totalDrinks > 0 && <span className="text-gold text-sm font-bold">${totalDrinks.toLocaleString('es-AR')}</span>}
+              {showBebidas ? <ChevronUp size={14} className="text-cream/35" /> : <ChevronDown size={14} className="text-cream/35" />}
+            </div>
+          </button>
+          {showBebidas && (
+            <div className="mt-2">
+              <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} />
+            </div>
+          )}
         </div>
       )}
 

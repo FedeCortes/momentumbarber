@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Plus, Minus, Store } from 'lucide-react'
+import { Check, Plus, Minus, Store, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
@@ -76,6 +76,8 @@ export default function SalesPage() {
   const [tip, setTip] = useState('')
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [showVitrina, setShowVitrina] = useState(false)
+  const [showBebidas, setShowBebidas] = useState(false)
 
   useEffect(() => {
     if (!tenant?.id) return
@@ -277,26 +279,40 @@ export default function SalesPage() {
 
       {/* ── Vitrina (100% local) ── */}
       <div className="card mb-3">
-        <div className="flex items-center justify-between mb-3">
+        <button className="flex items-center justify-between w-full" onClick={() => setShowVitrina(v => !v)}>
           <div className="flex items-center gap-2">
-            <label className="label mb-0">Vitrina</label>
+            <label className="label mb-0 pointer-events-none">Vitrina</label>
             <ShopBadge />
           </div>
-          {totalProducts > 0 && <span className="text-gold text-sm">${totalProducts.toLocaleString('es-AR')}</span>}
-        </div>
-        <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} />
+          <div className="flex items-center gap-2 shrink-0">
+            {totalProducts > 0 && <span className="text-gold text-sm">${totalProducts.toLocaleString('es-AR')}</span>}
+            {showVitrina ? <ChevronUp size={14} className="text-cream/35" /> : <ChevronDown size={14} className="text-cream/35" />}
+          </div>
+        </button>
+        {showVitrina && (
+          <div className="mt-3">
+            <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} />
+          </div>
+        )}
       </div>
 
       {/* ── Bebidas (100% local) ── */}
       <div className="card mb-3">
-        <div className="flex items-center justify-between mb-3">
+        <button className="flex items-center justify-between w-full" onClick={() => setShowBebidas(v => !v)}>
           <div className="flex items-center gap-2">
-            <label className="label mb-0">Bebidas</label>
+            <label className="label mb-0 pointer-events-none">Bebidas</label>
             <ShopBadge />
           </div>
-          {totalDrinks > 0 && <span className="text-gold text-sm">${totalDrinks.toLocaleString('es-AR')}</span>}
-        </div>
-        <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} />
+          <div className="flex items-center gap-2 shrink-0">
+            {totalDrinks > 0 && <span className="text-gold text-sm">${totalDrinks.toLocaleString('es-AR')}</span>}
+            {showBebidas ? <ChevronUp size={14} className="text-cream/35" /> : <ChevronDown size={14} className="text-cream/35" />}
+          </div>
+        </button>
+        {showBebidas && (
+          <div className="mt-3">
+            <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} />
+          </div>
+        )}
       </div>
 
       {/* Método de pago */}
