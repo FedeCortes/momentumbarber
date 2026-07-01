@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Settings, ShoppingBag,
   FileText, Moon, BarChart2, LogOut, Scissors,
-  ChevronDown, Sun
+  ChevronDown, Sun, MoreHorizontal
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
@@ -65,6 +65,7 @@ export default function AdminLayout() {
   const { signOut, tenant, isAdmin, isBarber, clearBarberSession, barberSession } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
 
   async function handleLogout() {
     clearBarberSession()
@@ -156,12 +157,44 @@ export default function AdminLayout() {
       {/* ── Bottom nav mobile ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-dark-400/40 z-30"
            style={{ background: 'rgb(var(--surface-card))' }}>
+
+        {/* Bandeja "Más" */}
+        {moreOpen && visibleItems.length > 5 && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
+            <div className="absolute bottom-full left-0 right-0 z-40 border-t border-dark-400/40"
+                 style={{ background: 'rgb(var(--surface-card))', boxShadow: 'var(--sh-modal)' }}>
+              {visibleItems.slice(5).map(({ to, label, icon: Icon, end }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  end={end}
+                  onClick={() => setMoreOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-colors border-b border-dark-400/25 last:border-0 ${
+                      isActive ? 'text-gold' : 'text-cream/60 hover:text-cream'
+                    }`
+                  }
+                >
+                  {({ isActive }) => (
+                    <>
+                      <Icon size={18} strokeWidth={isActive ? 2.2 : 1.6} />
+                      <span>{label}</span>
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          </>
+        )}
+
         <div className="flex justify-around">
           {visibleItems.slice(0, 5).map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
+              onClick={() => setMoreOpen(false)}
               className={({ isActive }) =>
                 `relative flex flex-col items-center gap-0.5 px-2 pt-2.5 pb-2 min-w-[3.5rem] text-[10px] font-bold uppercase tracking-wide transition-colors ${
                   isActive ? 'text-gold' : 'text-cream/35'
@@ -179,6 +212,21 @@ export default function AdminLayout() {
               )}
             </NavLink>
           ))}
+
+          {visibleItems.length > 5 && (
+            <button
+              onClick={() => setMoreOpen(!moreOpen)}
+              className={`relative flex flex-col items-center gap-0.5 px-2 pt-2.5 pb-2 min-w-[3.5rem] text-[10px] font-bold uppercase tracking-wide transition-colors ${
+                moreOpen ? 'text-gold' : 'text-cream/35'
+              }`}
+            >
+              {moreOpen && (
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-gold rounded-full" />
+              )}
+              <MoreHorizontal size={19} strokeWidth={moreOpen ? 2.2 : 1.6} />
+              <span>Más</span>
+            </button>
+          )}
         </div>
       </nav>
     </div>
