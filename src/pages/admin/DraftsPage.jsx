@@ -814,7 +814,7 @@ function BarberSection({ barber, drafts, sales, barbers, paymentMethods, isAdmin
 // ── Página principal ──────────────────────────────────────────────────────────
 export default function DraftsPage() {
   const { tenant, isAdmin } = useAuth()
-  const today = new Date().toISOString().split('T')[0]
+  const today = format(new Date(), 'yyyy-MM-dd')
   const [from, setFrom] = useState(today)
   const [to, setTo]     = useState(today)
   const [drafts, setDrafts] = useState([])

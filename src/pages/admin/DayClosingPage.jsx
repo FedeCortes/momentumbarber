@@ -39,7 +39,7 @@ function MoneyRow({ label, sub, amount, highlight, icon: Icon }) {
 
 export default function DayClosingPage() {
   const { tenant } = useAuth()
-  const today = new Date().toISOString().split('T')[0]
+  const today = format(new Date(), 'yyyy-MM-dd')
   const [from, setFrom] = useState(today)
   const [to, setTo]     = useState(today)
   const [sales, setSales]               = useState([])

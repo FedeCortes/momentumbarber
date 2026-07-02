@@ -224,7 +224,7 @@ function SaleRow({ sale, paymentMethods, showDate }) {
 export default function BarberHistoryPage() {
   const { tenant, barberSession } = useAuth()
   const barber = barberSession?.barber
-  const today  = new Date().toISOString().split('T')[0]
+  const today  = format(new Date(), 'yyyy-MM-dd')
 
   const [from, setFrom]               = useState(today)
   const [to, setTo]                   = useState(today)

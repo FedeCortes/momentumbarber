@@ -55,7 +55,7 @@ export default function StatsPage() {
 
   async function load() {
     setLoading(true)
-    const today = new Date().toISOString().split('T')[0]
+    const today = format(new Date(), 'yyyy-MM-dd')
     let query = supabase.from('sales').select('*, sale_items(*)').eq('tenant_id', tenant.id)
     if (range === 'today') {
       query = query.eq('sale_date', today)

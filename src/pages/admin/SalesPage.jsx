@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { format } from 'date-fns'
 import { Check, Plus, Minus, Store, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -160,7 +161,7 @@ export default function SalesPage() {
         barber_earnings: barberEarnings,
         shop_earnings: shopEarnings,
         surcharge_amt: surchargeAmt,
-        sale_date: new Date().toISOString().split('T')[0],
+        sale_date: format(new Date(), 'yyyy-MM-dd'),
       }).select().single()
       if (error) throw error
       if (items.length) await supabase.from('sale_items').insert(items.map(i => ({ ...i, sale_id: sale.id })))

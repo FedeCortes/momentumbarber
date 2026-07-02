@@ -2,7 +2,7 @@ import { format, subDays, differenceInDays, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Calendar } from 'lucide-react'
 
-const TODAY     = new Date().toISOString().split('T')[0]
+const TODAY     = format(new Date(), 'yyyy-MM-dd')
 const YESTERDAY = format(subDays(new Date(), 1), 'yyyy-MM-dd')
 const WEEK_AGO  = format(subDays(new Date(), 6), 'yyyy-MM-dd')
 

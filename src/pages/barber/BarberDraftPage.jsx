@@ -62,7 +62,7 @@ function ItemPicker({ items, selected, onToggle }) {
 function TodayDrafts({ barberId, tenantId, paymentMethods, refreshKey }) {
   const [drafts, setDrafts] = useState([])
   const [expanded, setExpanded] = useState(false)
-  const today = new Date().toISOString().split('T')[0]
+  const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => {
     supabase
@@ -266,7 +266,7 @@ export default function BarberDraftPage() {
         const { data: draft, error } = await supabase.from('drafts').insert({
           tenant_id: tenant.id,
           barber_id: barber.id,
-          draft_date: new Date().toISOString().split('T')[0],
+          draft_date: format(new Date(), 'yyyy-MM-dd'),
           ...payload,
         }).select().single()
         if (error) throw error
