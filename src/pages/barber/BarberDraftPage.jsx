@@ -68,7 +68,7 @@ function TodayDrafts({ barberId, tenantId, paymentMethods, refreshKey }) {
     supabase
       .from('drafts').select('*')
       .eq('barber_id', barberId).eq('tenant_id', tenantId)
-      .eq('draft_date', today).neq('status', 'discarded')
+      .eq('draft_date', today)
       .order('created_at', { ascending: false })
       .then(({ data }) => setDrafts(data || []))
   }, [barberId, tenantId, refreshKey])
@@ -103,9 +103,6 @@ function TodayDrafts({ barberId, tenantId, paymentMethods, refreshKey }) {
                   <p className="text-cream text-sm font-semibold">${Number(d.total).toLocaleString('es-AR')}</p>
                   <p className="text-cream/30 text-xs">{pm?.name || '—'} · {format(new Date(d.created_at), 'HH:mm')}</p>
                 </div>
-                <span className={`text-xs font-medium ${d.status === 'approved' ? 'text-emerald-400' : 'text-amber-400/70'}`}>
-                  {d.status === 'approved' ? 'Aprobado ✓' : 'Pendiente'}
-                </span>
               </div>
             )
           })}
@@ -164,8 +161,8 @@ export default function BarberDraftPage() {
       supabase.from('drafts').select('*').eq('id', editId).single(),
       supabase.from('draft_items').select('*').eq('draft_id', editId),
     ]).then(([{ data: draft }, { data: items }]) => {
-      if (!draft || draft.status !== 'pending') {
-        toast.error('Este registro ya no se puede editar')
+      if (!draft) {
+        toast.error('Este registro ya no existe')
         navigate('/barber/history')
         return
       }
@@ -254,7 +251,7 @@ export default function BarberDraftPage() {
 
       if (editId) {
         const { error } = await supabase.from('drafts')
-          .update(payload).eq('id', editId).eq('status', 'pending')
+          .update(payload).eq('id', editId)
         if (error) throw error
         await supabase.from('draft_items').delete().eq('draft_id', editId)
         if (items.length) {
@@ -300,7 +297,7 @@ export default function BarberDraftPage() {
           {editId ? 'Cambios guardados' : 'Registro guardado'}
         </p>
         <p className="text-cream/40 text-sm mt-2">
-          {editId ? 'El registro fue actualizado' : 'El administrador lo revisará'}
+          {editId ? 'El registro fue actualizado' : 'Quedó guardado como referencia'}
         </p>
       </div>
     )

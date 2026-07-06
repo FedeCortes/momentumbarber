@@ -8,7 +8,7 @@ import { es } from 'date-fns/locale'
 
 export default function AdminDashboard() {
   const { tenant } = useAuth()
-  const [stats, setStats] = useState({ todaySales: 0, todayTotal: 0, monthTotal: 0, barberCount: 0, pendingDrafts: 0, todayShop: 0 })
+  const [stats, setStats] = useState({ todaySales: 0, todayTotal: 0, monthTotal: 0, barberCount: 0, todayDrafts: 0, todayShop: 0 })
   const [loading, setLoading] = useState(true)
   const today = format(new Date(), 'yyyy-MM-dd')
   const month = format(new Date(), 'yyyy-MM')
@@ -23,7 +23,7 @@ export default function AdminDashboard() {
       supabase.from('sales').select('total, shop_earnings').eq('tenant_id', tenant.id).eq('sale_date', today),
       supabase.from('sales').select('total').eq('tenant_id', tenant.id).gte('sale_date', month + '-01'),
       supabase.from('barbers').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('is_active', true),
-      supabase.from('drafts').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('draft_date', today).eq('status', 'pending'),
+      supabase.from('drafts').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('draft_date', today),
     ])
 
     const todayTotal = (salesDay.data || []).reduce((s, r) => s + Number(r.total), 0)
@@ -35,8 +35,8 @@ export default function AdminDashboard() {
       todayTotal,
       todayShop,
       monthTotal,
-      barberCount:   barbers.count || 0,
-      pendingDrafts: drafts.count || 0,
+      barberCount:  barbers.count || 0,
+      todayDrafts:  drafts.count || 0,
     })
     setLoading(false)
   }
@@ -51,13 +51,13 @@ export default function AdminDashboard() {
         <h1 className="section-title">{tenant?.name}</h1>
       </div>
 
-      {/* Alerta de borradores pendientes */}
-      {stats.pendingDrafts > 0 && (
+      {/* Aviso de registros de barberos hoy */}
+      {stats.todayDrafts > 0 && (
         <Link to="/admin/drafts" className="flex items-center gap-3 bg-amber-500/8 border border-amber-500/20 rounded-2xl px-4 py-3 mb-5 hover:border-amber-500/40 transition-colors group">
           <AlertCircle size={18} className="text-amber-400 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-amber-400 text-sm font-medium">{stats.pendingDrafts} borrador{stats.pendingDrafts > 1 ? 'es' : ''} pendiente{stats.pendingDrafts > 1 ? 's' : ''}</p>
-            <p className="text-amber-400/50 text-xs">Tocar para revisar y aprobar</p>
+            <p className="text-amber-400 text-sm font-medium">{stats.todayDrafts} registro{stats.todayDrafts > 1 ? 's' : ''} de barberos hoy</p>
+            <p className="text-amber-400/50 text-xs">Tocar para comparar con lo oficial</p>
           </div>
           <ArrowRight size={15} className="text-amber-400/40 group-hover:text-amber-400/80 transition-colors" />
         </Link>
@@ -103,7 +103,7 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-2 gap-3">
         {[
           { to: '/admin/sales',   label: 'Nueva venta',     sub: 'Registrar un servicio', icon: ShoppingBag, accent: 'text-gold bg-gold/12 border-gold/20' },
-          { to: '/admin/drafts',  label: 'Registros',       sub: 'Ver borradores del día', icon: FileText,   accent: 'text-amber-400 bg-amber-500/12 border-amber-500/20' },
+          { to: '/admin/drafts',  label: 'Registros',       sub: 'Ventas oficiales del día', icon: FileText,   accent: 'text-amber-400 bg-amber-500/12 border-amber-500/20' },
           { to: '/admin/closing', label: 'Cierre',          sub: 'Resumen y distribución', icon: Moon,       accent: 'text-purple-400 bg-purple-500/12 border-purple-500/20' },
           { to: '/admin/stats',   label: 'Estadísticas',    sub: 'Análisis de ventas',     icon: TrendingUp,  accent: 'text-emerald-400 bg-emerald-500/12 border-emerald-500/20' },
         ].map(({ to, label, sub, icon: Icon, accent }) => (

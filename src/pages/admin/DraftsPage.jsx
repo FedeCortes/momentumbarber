@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileText, Check, X, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Receipt, Plus, Minus, Pencil, Trash2 } from 'lucide-react'
+import { FileText, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Receipt, Plus, Minus, Pencil, Trash2, ClipboardList, X, ArrowRightLeft } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import EmptyState from '../../components/ui/EmptyState'
@@ -11,8 +11,8 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Link } from 'react-router-dom'
 
-// ── Borrador — con edición y borrado para admin ───────────────────────────────
-function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, isAdmin, onDelete }) {
+// ── Borrador — solo referencia, con copiado a oficial y edición/borrado para admin ──
+function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin, onDelete }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState(null)
   const [working, setWorking] = useState(false)
@@ -40,49 +40,43 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
     setOpen(true)
   }
 
-  async function updateStatus(status) {
+  async function copyToOfficial() {
     setWorking(true)
     try {
-      if (status === 'approved') {
-        const { data: draftItems } = await supabase.from('draft_items').select('*').eq('draft_id', draft.id)
-        const barber = barbers.find(b => b.id === draft.barber_id)
-        const commission    = barber?.commission_pct || 0
-        const tipAmt        = Number(draft.tip) || 0
-        const totalServices = Number(draft.total_services) || 0
-        const totalProducts = Number(draft.total_products) || 0
-        const totalDrinks   = Number(draft.total_drinks) || 0
-        const draftSurcharge = Number(draft.surcharge_amt) || 0
-        const barberEarnings = totalServices * (commission / 100) + tipAmt
-        const shopEarnings   = totalServices * (1 - commission / 100) + totalProducts + totalDrinks + draftSurcharge
+      const { data: draftItems } = await supabase.from('draft_items').select('*').eq('draft_id', draft.id)
+      const barber = barbers.find(b => b.id === draft.barber_id)
+      const commission    = barber?.commission_pct || 0
+      const tipAmt        = Number(draft.tip) || 0
+      const totalServices = Number(draft.total_services) || 0
+      const totalProducts = Number(draft.total_products) || 0
+      const totalDrinks   = Number(draft.total_drinks) || 0
+      const draftSurcharge = Number(draft.surcharge_amt) || 0
+      const barberEarnings = totalServices * (commission / 100) + tipAmt
+      const shopEarnings   = totalServices * (1 - commission / 100) + totalProducts + totalDrinks + draftSurcharge
 
-        const { data: sale, error: saleErr } = await supabase.from('sales').insert({
-          tenant_id:         draft.tenant_id,
-          barber_id:         draft.barber_id,
-          payment_method_id: draft.payment_method_id,
-          tip:               tipAmt,
-          total_services:    totalServices,
-          total_products:    totalProducts,
-          total_drinks:      totalDrinks,
-          barber_earnings:   barberEarnings,
-          shop_earnings:     shopEarnings,
-          surcharge_amt:     draftSurcharge,
-          sale_date:         draft.draft_date,
-        }).select().single()
+      const { data: sale, error: saleErr } = await supabase.from('sales').insert({
+        tenant_id:         draft.tenant_id,
+        barber_id:         draft.barber_id,
+        payment_method_id: draft.payment_method_id,
+        tip:               tipAmt,
+        total_services:    totalServices,
+        total_products:    totalProducts,
+        total_drinks:      totalDrinks,
+        barber_earnings:   barberEarnings,
+        shop_earnings:     shopEarnings,
+        surcharge_amt:     draftSurcharge,
+        sale_date:         draft.draft_date,
+      }).select().single()
 
-        if (saleErr) throw saleErr
+      if (saleErr) throw saleErr
 
-        if (draftItems?.length) {
-          await supabase.from('sale_items').insert(
-            draftItems.map(({ id, draft_id, subtotal, ...rest }) => ({ ...rest, sale_id: sale.id }))
-          )
-        }
-        toast.success('Aprobado y registrado como venta oficial')
-      } else {
-        toast.success('Borrador descartado')
+      if (draftItems?.length) {
+        await supabase.from('sale_items').insert(
+          draftItems.map(({ id, draft_id, subtotal, ...rest }) => ({ ...rest, sale_id: sale.id }))
+        )
       }
-
-      await supabase.from('drafts').update({ status }).eq('id', draft.id)
-      onStatusChange()
+      toast.success('Venta oficial creada')
+      onChange?.()
     } catch (e) {
       toast.error(e.message || 'Error al procesar')
     } finally {
@@ -176,10 +170,10 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
       await supabase.from('draft_items').delete().eq('draft_id', draft.id)
       if (newItems.length) await supabase.from('draft_items').insert(newItems)
 
-      toast.success('Borrador actualizado')
+      toast.success('Registro actualizado')
       setEditOpen(false)
       setItems(null)
-      onStatusChange()
+      onChange?.()
     } catch (e) {
       toast.error(e.message)
     } finally {
@@ -190,22 +184,18 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
   async function handleDelete() {
     await supabase.from('draft_items').delete().eq('draft_id', draft.id)
     await supabase.from('drafts').delete().eq('id', draft.id)
-    toast.success('Borrador eliminado')
+    toast.success('Registro eliminado')
     setDeleteOpen(false)
     onDelete?.()
   }
 
-  const statusColor = { pending: 'text-amber-400', approved: 'text-emerald-400', discarded: 'text-cream/25' }[draft.status]
-  const statusLabel = { pending: 'Pendiente', approved: 'Aprobado', discarded: 'Descartado' }[draft.status]
-
   return (
     <>
-      <div className={`border border-dark-400 rounded-xl overflow-hidden ${draft.status === 'discarded' ? 'opacity-40' : ''}`}>
+      <div className="border border-dark-400 rounded-xl overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3">
           <button onClick={toggle} className="flex-1 text-left">
             <div className="flex items-center gap-2">
               <span className="font-display text-base text-gold">${(Number(draft.total) + Number(draft.surcharge_amt || 0)).toLocaleString('es-AR')}</span>
-              <span className={`text-xs ${statusColor}`}>{statusLabel}</span>
             </div>
             <div className="flex gap-3 mt-0.5 flex-wrap">
               {showDate && <span className="text-gold/50 text-xs">{format(new Date(draft.draft_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
@@ -214,7 +204,7 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
               {Number(draft.tip) > 0 && <span className="text-cream/30 text-xs">Propina ${Number(draft.tip).toLocaleString('es-AR')}</span>}
             </div>
           </button>
-          {isAdmin && draft.status === 'pending' && (
+          {isAdmin && (
             <div className="flex gap-1 shrink-0">
               <button onClick={openEdit} disabled={loadingEdit} className="btn-ghost p-1.5">
                 <Pencil size={14} className="text-cream/40 hover:text-cream/70" />
@@ -256,30 +246,21 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
               <p className="text-cream/25 text-xs mb-3">Sin detalle de ítems</p>
             )}
 
-            {draft.status === 'pending' && (
-              <div className="flex gap-2">
-                <button
-                  disabled={working}
-                  onClick={() => updateStatus('discarded')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-red-500/30 text-red-400 text-xs hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                >
-                  <X size={13} /> Descartar
-                </button>
-                <button
-                  disabled={working}
-                  onClick={() => updateStatus('approved')}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-500/30 text-emerald-400 text-xs hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
-                >
-                  <Check size={13} /> {working ? 'Procesando...' : 'Aprobar → Oficial'}
-                </button>
-              </div>
+            {isAdmin && (
+              <button
+                disabled={working}
+                onClick={copyToOfficial}
+                className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-gold/30 text-gold text-xs hover:bg-gold/10 transition-colors disabled:opacity-50"
+              >
+                <ArrowRightLeft size={13} /> {working ? 'Creando...' : 'Copiar a venta oficial'}
+              </button>
             )}
           </div>
         )}
       </div>
 
-      {/* Modal edición del borrador */}
-      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar borrador" size="md">
+      {/* Modal edición del registro */}
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Editar registro" size="md">
         <div className="flex flex-col gap-5">
           {catalog.services.length > 0 && (
             <div>
@@ -356,8 +337,8 @@ function DraftRow({ draft, barbers, paymentMethods, onStatusChange, showDate, is
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onConfirm={handleDelete}
-        title="Eliminar borrador"
-        message="¿Eliminás este borrador? Esta acción no se puede deshacer."
+        title="Eliminar registro"
+        message="¿Eliminás este registro? Esta acción no se puede deshacer."
         danger
       />
     </>
@@ -556,7 +537,6 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
           <button onClick={toggle} className="flex-1 text-left">
             <div className="flex items-center gap-2">
               <span className="font-display text-base text-cream">${(Number(sale.total) + Number(sale.surcharge_amt || 0)).toLocaleString('es-AR')}</span>
-              <span className="text-xs text-emerald-400/70">Oficial</span>
             </div>
             <div className="flex gap-3 mt-0.5 flex-wrap">
               {showDate && <span className="text-gold/50 text-xs">{format(new Date(sale.sale_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
@@ -730,12 +710,8 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
   )
 }
 
-// ── Sección de un barbero ─────────────────────────────────────────────────────
-function BarberSection({ barber, drafts, sales, barbers, paymentMethods, isAdmin, isSingle, onRefresh }) {
-  const [tab, setTab] = useState('drafts')
-
-  const pendingCount  = drafts.filter(d => d.status === 'pending').length
-  const draftTotal    = drafts.filter(d => d.status !== 'discarded').reduce((s, d) => s + Number(d.total) + Number(d.surcharge_amt || 0), 0)
+// ── Card de un barbero — columna principal, solo ventas oficiales ────────────
+function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods, isAdmin, isSingle, onRefresh }) {
   const officialTotal = sales.reduce((s, r) => s + Number(r.total) + Number(r.surcharge_amt || 0), 0)
   const match         = draftTotal > 0 && officialTotal > 0 && draftTotal === officialTotal
 
@@ -746,67 +722,58 @@ function BarberSection({ barber, drafts, sales, barbers, paymentMethods, isAdmin
           {barber.name[0].toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-cream">{barber.name}</span>
-            {pendingCount > 0 && (
-              <span className="bg-amber-500/15 text-amber-400 text-xs px-2 py-0.5 rounded-full">
-                {pendingCount} pendiente{pendingCount > 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            <span className="text-cream/40 text-xs">Reportó <span className="text-gold">${draftTotal.toLocaleString('es-AR')}</span></span>
-            <span className="text-cream/20 text-xs">·</span>
-            <span className="text-cream/40 text-xs">Oficial <span className="text-cream/70">${officialTotal.toLocaleString('es-AR')}</span></span>
-            {match && <CheckCircle2 size={13} className="text-emerald-400" />}
-            {!match && draftTotal > 0 && officialTotal > 0 && <AlertTriangle size={13} className="text-amber-400" />}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex gap-1 bg-dark-300/60 p-1 rounded-lg mb-4">
-        <button
-          onClick={() => setTab('drafts')}
-          className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${tab === 'drafts' ? 'bg-dark-200 text-gold shadow-sm' : 'text-cream/50 hover:text-cream/70'}`}
-        >
-          Borradores ({drafts.length})
-        </button>
-        <button
-          onClick={() => setTab('sales')}
-          className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${tab === 'sales' ? 'bg-dark-200 text-cream shadow-sm' : 'text-cream/50 hover:text-cream/70'}`}
-        >
-          Oficial ({sales.length})
-        </button>
-      </div>
-
-      {tab === 'drafts' ? (
-        drafts.length === 0
-          ? <p className="text-cream/25 text-sm text-center py-3">Sin borradores este día</p>
-          : <div className="flex flex-col gap-2">
-              {drafts.map(d => (
-                <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onStatusChange={onRefresh} showDate={!isSingle} isAdmin={isAdmin} onDelete={onRefresh} />
-              ))}
+          <span className="font-medium text-cream">{barber.name}</span>
+          {draftTotal > 0 && (
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="text-cream/40 text-xs">Reportó <span className="text-gold">${draftTotal.toLocaleString('es-AR')}</span></span>
+              <span className="text-cream/20 text-xs">·</span>
+              <span className="text-cream/40 text-xs">Oficial <span className="text-cream/70">${officialTotal.toLocaleString('es-AR')}</span></span>
+              {match && <CheckCircle2 size={13} className="text-emerald-400" />}
+              {!match && officialTotal > 0 && <AlertTriangle size={13} className="text-amber-400" />}
             </div>
-      ) : (
-        <div>
-          {isAdmin && (
-            <Link
-              to={`/admin/sales`}
-              className="flex items-center justify-center gap-2 py-2.5 mb-3 rounded-lg border border-dashed border-dark-400 text-cream/40 hover:border-gold/40 hover:text-gold text-xs transition-colors"
-            >
-              <Plus size={14} /> Registrar nueva venta
-            </Link>
           )}
-          {sales.length === 0
-            ? <p className="text-cream/25 text-sm text-center py-3">Sin ventas oficiales este día</p>
-            : <div className="flex flex-col gap-2">
-                {sales.map(s => (
-                  <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} />
-                ))}
-              </div>
-          }
         </div>
+      </div>
+
+      {isAdmin && (
+        <Link
+          to={`/admin/sales`}
+          className="flex items-center justify-center gap-2 py-2.5 mb-3 rounded-lg border border-dashed border-dark-400 text-cream/40 hover:border-gold/40 hover:text-gold text-xs transition-colors"
+        >
+          <Plus size={14} /> Registrar nueva venta
+        </Link>
       )}
+
+      {sales.length === 0
+        ? <p className="text-cream/25 text-sm text-center py-3">Sin ventas oficiales este día</p>
+        : <div className="flex flex-col gap-2">
+            {sales.map(s => (
+              <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} />
+            ))}
+          </div>
+      }
+    </div>
+  )
+}
+
+// ── Card de un barbero — panel lateral, solo registros de referencia ─────────
+function DraftBarberCard({ barber, drafts, barbers, paymentMethods, isAdmin, isSingle, onChange }) {
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-8 h-8 rounded-full bg-dark-300 flex items-center justify-center font-display text-gold text-sm shrink-0">
+          {barber.name[0].toUpperCase()}
+        </div>
+        <span className="font-medium text-cream text-sm">{barber.name}</span>
+      </div>
+      {drafts.length === 0
+        ? <p className="text-cream/25 text-sm text-center py-3">Sin registros este día</p>
+        : <div className="flex flex-col gap-2">
+            {drafts.map(d => (
+              <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onChange={onChange} showDate={!isSingle} isAdmin={isAdmin} onDelete={onChange} />
+            ))}
+          </div>
+      }
     </div>
   )
 }
@@ -822,6 +789,7 @@ export default function DraftsPage() {
   const [barbers, setBarbers] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showDrafts, setShowDrafts] = useState(false)
 
   useEffect(() => {
     if (!tenant?.id) return
@@ -855,88 +823,136 @@ export default function DraftsPage() {
   )
   const shopOnlySales   = sales.filter(s => !s.barber_id)
   const orphanDrafts    = drafts.filter(d => !d.barber_id)
-  const totalPending    = drafts.filter(d => d.status === 'pending').length
   const isSingle        = from === to
+  const draftsInRange   = drafts.length
+
+  const draftsPanel = (
+    <>
+      {activeBarbers.map(barber => (
+        <DraftBarberCard
+          key={barber.id}
+          barber={barber}
+          drafts={drafts.filter(d => d.barber_id === barber.id)}
+          barbers={barbers}
+          paymentMethods={paymentMethods}
+          isAdmin={isAdmin}
+          isSingle={isSingle}
+          onChange={load}
+        />
+      ))}
+
+      {orphanDrafts.length > 0 && (
+        <div className="card mb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 rounded-full bg-dark-300 flex items-center justify-center shrink-0">
+              <FileText size={14} className="text-cream/40" />
+            </div>
+            <div>
+              <p className="font-medium text-cream text-sm">Sin barbero</p>
+              <p className="text-cream/40 text-xs">Registrados sin asignar</p>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            {orphanDrafts.map(d => (
+              <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onChange={load} showDate={!isSingle} isAdmin={isAdmin} onDelete={load} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeBarbers.length === 0 && orphanDrafts.length === 0 && (
+        <p className="text-cream/25 text-sm text-center py-6">Sin registros de barberos este día</p>
+      )}
+    </>
+  )
 
   return (
     <div>
       <div className="mb-5">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-3">
           <div>
             <h1 className="section-title">Registros</h1>
             <p className="section-sub capitalize">{dateRangeLabel(from, to)}</p>
           </div>
+          {draftsInRange > 0 && (
+            <button
+              onClick={() => setShowDrafts(v => !v)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium shrink-0 transition-colors ${
+                showDrafts ? 'border-gold/50 bg-gold/10 text-gold' : 'border-dark-400 text-cream/50 hover:text-cream/80'
+              }`}
+            >
+              <ClipboardList size={14} /> Borradores <span className="opacity-60">({draftsInRange})</span>
+            </button>
+          )}
         </div>
         <DateRangePicker from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
       </div>
-
-      {totalPending > 0 && (
-        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5 mb-4">
-          <AlertTriangle size={15} className="text-amber-400 shrink-0" />
-          <p className="text-amber-400 text-sm">{totalPending} pendiente{totalPending > 1 ? 's' : ''} — al aprobar se convierte en venta oficial</p>
-        </div>
-      )}
 
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : activeBarbers.length === 0 && shopOnlySales.length === 0 && orphanDrafts.length === 0 ? (
-        <EmptyState icon={FileText} title="Sin actividad este día" description="No hay borradores ni ventas registradas para esta fecha" />
       ) : (
-        <>
-          {activeBarbers.map(barber => (
-            <BarberSection
-              key={barber.id}
-              barber={barber}
-              drafts={drafts.filter(d => d.barber_id === barber.id)}
-              sales={sales.filter(s => s.barber_id === barber.id)}
-              barbers={barbers}
-              paymentMethods={paymentMethods}
-              isAdmin={isAdmin}
-              isSingle={isSingle}
-              onRefresh={load}
-            />
-          ))}
-
-          {orphanDrafts.length > 0 && (
-            <div className="card mb-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-dark-300 flex items-center justify-center shrink-0">
-                  <FileText size={18} className="text-amber-400/60" />
-                </div>
-                <div>
-                  <p className="font-medium text-cream">Borradores sin barbero</p>
-                  <p className="text-cream/40 text-xs">Registrados sin asignar a un barbero</p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                {orphanDrafts.map(d => (
-                  <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onStatusChange={load} showDate={!isSingle} isAdmin={isAdmin} onDelete={load} />
+        <div className={showDrafts ? 'lg:grid lg:grid-cols-[1fr_320px] lg:gap-5 lg:items-start' : ''}>
+          <div>
+            {activeBarbers.length === 0 && shopOnlySales.length === 0 ? (
+              <EmptyState icon={FileText} title="Sin ventas oficiales" description="No hay ventas oficiales registradas para esta fecha" />
+            ) : (
+              <>
+                {activeBarbers.map(barber => (
+                  <OfficialBarberCard
+                    key={barber.id}
+                    barber={barber}
+                    sales={sales.filter(s => s.barber_id === barber.id)}
+                    draftTotal={drafts.filter(d => d.barber_id === barber.id).reduce((s, d) => s + Number(d.total) + Number(d.surcharge_amt || 0), 0)}
+                    barbers={barbers}
+                    paymentMethods={paymentMethods}
+                    isAdmin={isAdmin}
+                    isSingle={isSingle}
+                    onRefresh={load}
+                  />
                 ))}
-              </div>
-            </div>
-          )}
 
-          {shopOnlySales.length > 0 && (
-            <div className="card mb-4">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-dark-300 flex items-center justify-center shrink-0">
-                  <Receipt size={18} className="text-cream/40" />
+                {shopOnlySales.length > 0 && (
+                  <div className="card mb-4">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-full bg-dark-300 flex items-center justify-center shrink-0">
+                        <Receipt size={18} className="text-cream/40" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-cream">Solo local</p>
+                        <p className="text-cream/40 text-xs">Ventas sin barbero · vitrina y bebidas</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {shopOnlySales.map(s => (
+                        <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} isAdmin={isAdmin} onRefresh={load} showDate={!isSingle} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {showDrafts && (
+            <>
+              <div className="fixed inset-0 bg-dark/70 z-40 lg:hidden" onClick={() => setShowDrafts(false)} />
+              <aside
+                className="fixed inset-x-0 bottom-0 z-50 max-h-[82vh] overflow-y-auto rounded-t-2xl border-t border-dark-400 px-4 pt-2 pb-6 lg:static lg:z-auto lg:max-h-none lg:overflow-visible lg:rounded-none lg:border-0 lg:px-0 lg:py-0"
+                style={{ background: 'rgb(var(--surface-card))' }}
+              >
+                <div className="flex items-center justify-between py-3 lg:pb-3 lg:pt-0">
+                  <p className="text-cream/60 text-xs font-bold uppercase tracking-wide">Borradores por barbero</p>
+                  <button onClick={() => setShowDrafts(false)} className="lg:hidden btn-ghost p-1.5">
+                    <X size={16} className="text-cream/40" />
+                  </button>
                 </div>
-                <div>
-                  <p className="font-medium text-cream">Solo local</p>
-                  <p className="text-cream/40 text-xs">Ventas sin barbero · vitrina y bebidas</p>
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                {shopOnlySales.map(s => (
-                  <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} isAdmin={isAdmin} onRefresh={load} showDate={!isSingle} />
-                ))}
-              </div>
-            </div>
+                {draftsPanel}
+              </aside>
+            </>
           )}
-        </>
+        </div>
       )}
     </div>
   )

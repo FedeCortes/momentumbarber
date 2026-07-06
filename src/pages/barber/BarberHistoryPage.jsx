@@ -16,8 +16,7 @@ function DraftRow({ draft, paymentMethods, showDate, onDelete }) {
   const [confirmDelete, setConfirm]   = useState(false)
   const [deleting, setDeleting]       = useState(false)
 
-  const isPending = draft.status === 'pending'
-  const pm        = paymentMethods.find(p => p.id === draft.payment_method_id)
+  const pm = paymentMethods.find(p => p.id === draft.payment_method_id)
 
   async function handleToggle() {
     if (open) { setOpen(false); return }
@@ -46,16 +45,8 @@ function DraftRow({ draft, paymentMethods, showDate, onDelete }) {
     navigate(`/barber?edit=${draft.id}`)
   }
 
-  const statusStyle = {
-    pending:   { label: 'Pendiente',   cls: 'text-amber-400 bg-amber-500/10 border-amber-500/25' },
-    approved:  { label: 'Aprobado ✓',  cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25' },
-    discarded: { label: 'Descartado',  cls: 'text-cream/25 bg-dark-300/30 border-dark-400/20' },
-  }[draft.status]
-
   return (
-    <div className={`rounded-2xl border overflow-hidden transition-opacity ${
-      draft.status === 'discarded' ? 'opacity-40' : ''
-    } ${isPending ? 'border-amber-500/20' : 'border-dark-400/40'}`}>
+    <div className="rounded-2xl border border-dark-400/40 overflow-hidden">
 
       {/* Fila principal */}
       <button
@@ -65,9 +56,6 @@ function DraftRow({ draft, paymentMethods, showDate, onDelete }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-base font-bold text-cream">${Number(draft.total).toLocaleString('es-AR')}</span>
-            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusStyle.cls}`}>
-              {statusStyle.label}
-            </span>
           </div>
           <div className="flex flex-wrap gap-x-2 gap-y-0">
             {showDate && (
@@ -83,28 +71,26 @@ function DraftRow({ draft, paymentMethods, showDate, onDelete }) {
           </div>
         </div>
 
-        {/* Acciones para pendientes */}
-        {isPending && (
-          <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
-            <button
-              onClick={handleEdit}
-              className="w-9 h-9 rounded-xl flex items-center justify-center text-cream/30 hover:text-gold hover:bg-gold/10 transition-all active:scale-90"
-            >
-              <Pencil size={15} />
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className={`h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 ${
-                confirmDelete
-                  ? 'px-3 bg-red-500/12 text-red-400 border border-red-500/25 text-xs font-bold'
-                  : 'w-9 text-cream/30 hover:text-red-400 hover:bg-red-500/8'
-              }`}
-            >
-              {confirmDelete ? 'Eliminar' : <Trash2 size={15} />}
-            </button>
-          </div>
-        )}
+        {/* Acciones */}
+        <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={handleEdit}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-cream/30 hover:text-gold hover:bg-gold/10 transition-all active:scale-90"
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className={`h-9 rounded-xl flex items-center justify-center transition-all active:scale-90 ${
+              confirmDelete
+                ? 'px-3 bg-red-500/12 text-red-400 border border-red-500/25 text-xs font-bold'
+                : 'w-9 text-cream/30 hover:text-red-400 hover:bg-red-500/8'
+            }`}
+          >
+            {confirmDelete ? 'Eliminar' : <Trash2 size={15} />}
+          </button>
+        </div>
 
         <ChevronDown
           size={14}
@@ -262,9 +248,7 @@ export default function BarberHistoryPage() {
     setLoading(false)
   }
 
-  const activeDrafts = drafts.filter(d => d.status !== 'discarded')
-  const pendingCount = drafts.filter(d => d.status === 'pending').length
-  const draftTotal   = activeDrafts.reduce((s, d) => s + Number(d.total), 0)
+  const draftTotal   = drafts.reduce((s, d) => s + Number(d.total), 0)
   const salesTotal   = sales.reduce((s, r) => s + Number(r.total), 0)
   const myEarnings   = sales.reduce((s, r) => s + Number(r.barber_earnings), 0)
   const myTips       = sales.reduce((s, r) => s + Number(r.tip), 0)
@@ -293,7 +277,7 @@ export default function BarberHistoryPage() {
               <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-1">Reporté</p>
               <p className="font-display text-2xl text-gold">${draftTotal.toLocaleString('es-AR')}</p>
               <p className="text-cream/30 text-xs mt-0.5">
-                {activeDrafts.length} registro{activeDrafts.length !== 1 ? 's' : ''}
+                {drafts.length} registro{drafts.length !== 1 ? 's' : ''}
               </p>
             </div>
             <div>
@@ -371,12 +355,10 @@ export default function BarberHistoryPage() {
           <p className="text-cream/25 text-sm text-center py-8">Sin registros en este período</p>
         ) : (
           <div className="flex flex-col gap-2.5">
-            {pendingCount > 0 && (
-              <p className="text-cream/28 text-xs flex items-center gap-1.5 mb-1">
-                <Pencil size={11} />
-                Los pendientes se pueden editar o eliminar
-              </p>
-            )}
+            <p className="text-cream/28 text-xs flex items-center gap-1.5 mb-1">
+              <Pencil size={11} />
+              Podés editar o eliminar tus registros
+            </p>
             {drafts.map(d => (
               <DraftRow
                 key={d.id}
