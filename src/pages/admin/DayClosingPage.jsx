@@ -1,18 +1,69 @@
 import { useEffect, useState } from 'react'
-import { Moon, Share2, Download, Scissors, Store, Banknote, ArrowRightLeft, ShoppingBag, Droplets } from 'lucide-react'
+import { Moon, Share2, Download, Scissors, ShoppingBag, Droplets, ArrowRightLeft, Banknote, Minus, Equal } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import EmptyState from '../../components/ui/EmptyState'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
+import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
 
 function fmt(n) { return Number(n || 0).toLocaleString('es-AR') }
 
+function CountButton({ count, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="underline decoration-dotted underline-offset-2 hover:text-cream transition-colors"
+    >
+      {count} {count === 1 ? 'venta' : 'ventas'}
+    </button>
+  )
+}
+
+function SaleDetailRow({ sale, barbers, paymentMethods, showBarber, showDate }) {
+  const pm     = paymentMethods.find(p => p.id === sale.payment_method_id)
+  const barber = barbers.find(b => b.id === sale.barber_id)
+  const items  = sale.sale_items || []
+  const itemsLabel = items.map(it => it.quantity > 1 ? `${it.name} ×${it.quantity}` : it.name).join(', ')
+  const total = Number(sale.total_services || 0) + Number(sale.total_products || 0) + Number(sale.total_drinks || 0) + Number(sale.tip || 0) + Number(sale.surcharge_amt || 0)
+
+  return (
+    <div className="flex items-center justify-between gap-3 py-3 border-b border-dark-400/30 last:border-0">
+      <div className="min-w-0">
+        <p className="text-cream text-sm truncate">{itemsLabel || 'Sin ítems'}</p>
+        <div className="flex flex-wrap gap-x-2 text-cream/35 text-xs mt-0.5">
+          {showDate && <span className="capitalize">{format(new Date(sale.sale_date + 'T12:00:00'), 'd MMM', { locale: es })}</span>}
+          <span>{format(new Date(sale.created_at), 'HH:mm')}</span>
+          {showBarber && barber && <span>· {barber.name}</span>}
+          <span>· {pm?.name || '—'}</span>
+          {Number(sale.tip) > 0 && <span className="text-gold/50">· propina ${fmt(sale.tip)}</span>}
+        </div>
+      </div>
+      <span className="text-cream font-medium text-sm shrink-0">${fmt(total)}</span>
+    </div>
+  )
+}
+
 function SectionLabel({ children }) {
   return (
     <p className="text-cream/35 text-xs uppercase tracking-widest font-semibold mb-3">{children}</p>
+  )
+}
+
+function ExcludedRow({ icon: Icon, label, amount }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2 border-b border-dark-400/15">
+      <div className="flex items-center gap-2 min-w-0">
+        <Icon size={11} className="text-red-400/40 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-cream/35 text-xs">{label}</p>
+          <p className="text-cream/20 text-[11px]">No le corresponde, queda 100% en el local</p>
+        </div>
+      </div>
+      <span className="text-red-400/60 text-sm shrink-0">-${fmt(amount)}</span>
+    </div>
   )
 }
 
@@ -47,6 +98,7 @@ export default function DayClosingPage() {
   const [paymentMethods, setPaymentMethods] = useState([])
   const [loading, setLoading]           = useState(false)
   const [shared, setShared]             = useState(false)
+  const [detail, setDetail]             = useState(null) // { title, sales, showBarber }
 
   useEffect(() => {
     if (!tenant?.id) return
@@ -71,36 +123,48 @@ export default function DayClosingPage() {
     setLoading(false)
   }
 
-  // ── Totales globales ──
-  const saleTotal = s => Number(s.total_services || 0) + Number(s.total_products || 0) + Number(s.total_drinks || 0) + Number(s.tip || 0)
+  // ── Totales globales ── (incluye recargo: es plata que efectivamente cobró el local al cliente)
+  const saleTotal = s => Number(s.total_services || 0) + Number(s.total_products || 0) + Number(s.total_drinks || 0) + Number(s.tip || 0) + Number(s.surcharge_amt || 0)
   const grandTotal     = sales.reduce((sum, s) => sum + saleTotal(s), 0)
-  const totalServices  = sales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
   const totalProducts  = sales.reduce((sum, s) => sum + Number(s.total_products || 0), 0)
   const totalDrinks    = sales.reduce((sum, s) => sum + Number(s.total_drinks || 0), 0)
   const totalTips      = sales.reduce((sum, s) => sum + Number(s.tip || 0), 0)
-  const totalBarbers   = sales.reduce((sum, s) => sum + Number(s.barber_earnings || 0), 0)
+  const totalSurcharge = sales.reduce((sum, s) => sum + Number(s.surcharge_amt || 0), 0)
   const totalShop      = sales.reduce((sum, s) => sum + Number(s.shop_earnings || 0), 0)
-  const shopFromSvcs   = totalShop - totalProducts - totalDrinks
+  const totalServicesAll = sales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
+  // Lo que retiene el local de los servicios: su % de comisión + servicios de ventas sin barbero (100% local)
+  const shopFromServices = totalShop - totalProducts - totalDrinks - totalSurcharge
+  // Lo que efectivamente se les pagó a los barberos por comisión de servicios (sin contar propinas)
+  const totalBarberServiceCommission = totalServicesAll - shopFromServices
 
   // ── Métodos de pago ──
   const byPayment = paymentMethods.map(pm => {
     const pmSales = sales.filter(s => s.payment_method_id === pm.id)
-    return { name: pm.name, total: pmSales.reduce((sum, s) => sum + saleTotal(s), 0), count: pmSales.length }
+    return { name: pm.name, total: pmSales.reduce((sum, s) => sum + saleTotal(s), 0), count: pmSales.length, sales: pmSales }
   }).filter(p => p.count > 0)
+
+  const surchargeMethods = paymentMethods.filter(pm =>
+    Number(pm.surcharge_pct) > 0 && sales.some(s => s.payment_method_id === pm.id && Number(s.surcharge_amt) > 0)
+  )
 
   // ── Por barbero ──
   const byBarber = barbers.map(b => {
     const bSales = sales.filter(s => s.barber_id === b.id)
     if (!bSales.length) return null
-    const svcs     = bSales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
-    const tips     = bSales.reduce((sum, s) => sum + Number(s.tip || 0), 0)
-    const earnings = bSales.reduce((sum, s) => sum + Number(s.barber_earnings || 0), 0)
-    return { barber: b, count: bSales.length, svcs, tips, earnings }
+    const svcs      = bSales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
+    const products  = bSales.reduce((sum, s) => sum + Number(s.total_products || 0), 0)
+    const drinks    = bSales.reduce((sum, s) => sum + Number(s.total_drinks || 0), 0)
+    const tips      = bSales.reduce((sum, s) => sum + Number(s.tip || 0), 0)
+    const earnings  = bSales.reduce((sum, s) => sum + Number(s.barber_earnings || 0), 0)
+    const surcharge = bSales.reduce((sum, s) => sum + Number(s.surcharge_amt || 0), 0)
+    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, sales: bSales }
   }).filter(Boolean)
 
   // ── Ventas sin barbero ──
   const noBarberSales = sales.filter(s => !s.barber_id)
-  const noBarberTotal = noBarberSales.reduce((sum, s) => sum + saleTotal(s), 0)
+  const noBarberTotal = noBarberSales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
+
+  const isSingle = from === to
 
   // ── Resumen de texto para copiar ──
   function buildText() {
@@ -121,7 +185,7 @@ export default function DayClosingPage() {
     }
 
     if (byBarber.length) {
-      lines.push(``, `👤 BARBEROS:`)
+      lines.push(``, `👤 A PAGAR:`)
       byBarber.forEach(({ barber, count, svcs, tips, earnings }) => {
         lines.push(``, `${barber.name} (${barber.commission_pct}% comisión)`)
         lines.push(`   Servicios (${count}): $${fmt(svcs)}`)
@@ -130,15 +194,12 @@ export default function DayClosingPage() {
       })
     }
 
-    if (noBarberSales.length) {
-      lines.push(``, `   Sin barbero: $${fmt(noBarberTotal)} (${noBarberSales.length} ventas)`)
-    }
-
     lines.push(
       ``, `🏪 LOCAL: $${fmt(totalShop)}`,
-      shopFromSvcs > 0 ? `   Comisión servicios: $${fmt(shopFromSvcs)}` : null,
+      shopFromServices > 0 ? `   Servicios (comisión${noBarberSales.length ? ' + sin barbero' : ''}): $${fmt(shopFromServices)}` : null,
       totalProducts > 0 ? `   Vitrina:            $${fmt(totalProducts)}` : null,
       totalDrinks   > 0 ? `   Bebidas:            $${fmt(totalDrinks)}` : null,
+      totalSurcharge > 0 ? `   Recargo pagos:      $${fmt(totalSurcharge)}` : null,
     )
 
     return lines.filter(l => l !== null).join('\n')
@@ -179,10 +240,6 @@ export default function DayClosingPage() {
     toast.success('Resumen descargado')
   }
 
-  // ── Barra de distribución ──
-  const barberPct = grandTotal > 0 ? Math.round((totalBarbers / grandTotal) * 100) : 0
-  const shopPct   = 100 - barberPct
-
   return (
     <div className="pb-8">
       {/* Header */}
@@ -205,19 +262,16 @@ export default function DayClosingPage() {
       ) : (
         <div className="mt-5 flex flex-col gap-5">
 
-          {/* ── TOTALES PRINCIPALES ── */}
+          {/* ── TOTAL RECAUDADO ── */}
           <div className="card">
-            <div className="flex items-end justify-between mb-4">
-              <div>
-                <p className="text-cream/40 text-xs uppercase tracking-wider mb-1">Total recaudado</p>
-                <p className="font-display text-4xl text-gold">${fmt(grandTotal)}</p>
-                <p className="text-cream/30 text-xs mt-1">{sales.length} {sales.length === 1 ? 'venta' : 'ventas'}</p>
-              </div>
-            </div>
+            <p className="text-cream/40 text-xs uppercase tracking-wider mb-1">Total recaudado</p>
+            <p className="font-display text-4xl text-gold">${fmt(grandTotal)}</p>
+            <p className="text-cream/30 text-xs mt-1">
+              <CountButton count={sales.length} onClick={() => setDetail({ title: 'Todas las ventas', sales, showBarber: true })} />
+            </p>
 
-            {/* Métodos de pago */}
             {byPayment.length > 0 && (
-              <div className="flex gap-3 pt-3 border-t border-dark-400/40">
+              <div className="flex gap-3 pt-4 mt-4 border-t border-dark-400/40">
                 {byPayment.map(pm => {
                   const isCash = pm.name.toLowerCase().includes('efectivo')
                   return (
@@ -230,7 +284,9 @@ export default function DayClosingPage() {
                         <span className="text-cream/40 text-xs">{pm.name}</span>
                       </div>
                       <p className="font-medium text-cream text-base">${fmt(pm.total)}</p>
-                      <p className="text-cream/25 text-xs">{pm.count} {pm.count === 1 ? 'venta' : 'ventas'}</p>
+                      <p className="text-cream/25 text-xs">
+                        <CountButton count={pm.count} onClick={() => setDetail({ title: pm.name, sales: pm.sales, showBarber: true })} />
+                      </p>
                     </div>
                   )
                 })}
@@ -238,66 +294,12 @@ export default function DayClosingPage() {
             )}
           </div>
 
-          {/* ── DISTRIBUCIÓN VISUAL ── */}
-          <div className="card">
-            <SectionLabel>Distribución del dinero</SectionLabel>
-
-            {/* Barra visual */}
-            {grandTotal > 0 && (
-              <div className="mb-4">
-                <div className="flex rounded-full overflow-hidden h-3 mb-2">
-                  {totalBarbers > 0 && (
-                    <div
-                      className="bg-gold transition-all"
-                      style={{ width: `${barberPct}%` }}
-                    />
-                  )}
-                  {totalShop > 0 && (
-                    <div
-                      className="bg-dark-500 transition-all"
-                      style={{ width: `${shopPct}%` }}
-                    />
-                  )}
-                </div>
-                <div className="flex gap-4 text-xs">
-                  {totalBarbers > 0 && (
-                    <span className="flex items-center gap-1.5 text-cream/50">
-                      <span className="w-2 h-2 rounded-full bg-gold inline-block" />
-                      Barberos {barberPct}%
-                    </span>
-                  )}
-                  <span className="flex items-center gap-1.5 text-cream/50">
-                    <span className="w-2 h-2 rounded-full bg-dark-500 inline-block" />
-                    Local {shopPct}%
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              {totalBarbers > 0 && (
-                <div className="flex-1 bg-gold/8 border border-gold/20 rounded-xl px-4 py-3">
-                  <p className="text-gold/60 text-xs mb-1">Total barberos</p>
-                  <p className="font-display text-2xl text-gold">${fmt(totalBarbers)}</p>
-                  {totalTips > 0 && <p className="text-gold/40 text-xs mt-0.5">incl. ${fmt(totalTips)} en propinas</p>}
-                </div>
-              )}
-              <div className="flex-1 bg-dark-300/50 border border-dark-400/40 rounded-xl px-4 py-3">
-                <p className="text-cream/40 text-xs mb-1">Total local</p>
-                <p className="font-display text-2xl text-cream">${fmt(totalShop)}</p>
-                {(totalProducts + totalDrinks) > 0 && (
-                  <p className="text-cream/30 text-xs mt-0.5">incl. ${fmt(totalProducts + totalDrinks)} vitrina/bebidas</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* ── POR BARBERO ── */}
+          {/* ── A PAGARLE A CADA BARBERO ── */}
           {byBarber.length > 0 && (
             <div>
-              <SectionLabel>Lo que cobra cada barbero</SectionLabel>
+              <SectionLabel>A pagarle a cada barbero</SectionLabel>
               <div className="flex flex-col gap-3">
-                {byBarber.map(({ barber, count, svcs, tips, earnings }) => (
+                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, sales: bSales }) => (
                   <div key={barber.id} className="card">
                     {/* Encabezado */}
                     <div className="flex items-center gap-3 mb-4">
@@ -306,7 +308,10 @@ export default function DayClosingPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-cream text-sm">{barber.name}</p>
-                        <p className="text-cream/35 text-xs">{count} {count === 1 ? 'venta' : 'ventas'} · {barber.commission_pct}% comisión</p>
+                        <p className="text-cream/35 text-xs">
+                          <CountButton count={count} onClick={() => setDetail({ title: barber.name, sales: bSales, showBarber: false })} />
+                          {' '}· {barber.commission_pct}% comisión
+                        </p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-cream/35 text-xs mb-0.5">a cobrar</p>
@@ -314,27 +319,48 @@ export default function DayClosingPage() {
                       </div>
                     </div>
 
-                    {/* Desglose */}
+                    {/* Por qué le pagás eso */}
                     <div className="bg-dark-300/40 rounded-xl overflow-hidden">
-                      <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-400/30">
-                        <div className="flex items-center gap-2">
-                          <Scissors size={12} className="text-cream/30" />
-                          <span className="text-cream/55 text-xs">Servicios realizados</span>
+                      {(surcharge > 0 || products > 0 || drinks > 0) ? (
+                        <>
+                          {/* Pasos intermedios: de acá sale la base de la comisión, no suman aparte */}
+                          <div className="flex items-center justify-between px-4 py-2 border-b border-dark-400/15">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Scissors size={11} className="text-cream/20 shrink-0" />
+                              <span className="text-cream/35 text-xs">Generado en sus ventas</span>
+                            </div>
+                            <span className="text-cream/40 text-sm shrink-0">${fmt(svcs + products + drinks + surcharge)}</span>
+                          </div>
+                          {products > 0 && <ExcludedRow icon={ShoppingBag} label="Vitrina vendida" amount={products} />}
+                          {drinks   > 0 && <ExcludedRow icon={Droplets} label="Bebidas vendidas" amount={drinks} />}
+                          {surcharge > 0 && <ExcludedRow icon={ArrowRightLeft} label="Recargo método de pago" amount={surcharge} />}
+
+                          {/* Resultado: esto es lo que efectivamente suma al total */}
+                          <div className="flex items-center justify-between px-4 py-3 border-b border-dark-400/30 bg-dark-400/25">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Equal size={12} className="text-cream/45 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-cream font-medium text-xs">Comisión ({barber.commission_pct}%)</p>
+                                <p className="text-cream/30 text-[11px]">Sobre ${fmt(svcs)} en servicios</p>
+                              </div>
+                            </div>
+                            <span className="text-cream font-semibold text-sm shrink-0">${fmt(svcs * barber.commission_pct / 100)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-400/30">
+                          <div className="flex items-center gap-2">
+                            <Scissors size={12} className="text-cream/30" />
+                            <span className="text-cream/55 text-xs">Servicios × {barber.commission_pct}% comisión</span>
+                          </div>
+                          <span className="text-cream/70 text-sm font-medium">${fmt(svcs * barber.commission_pct / 100)}</span>
                         </div>
-                        <span className="text-cream/70 text-sm font-medium">${fmt(svcs)}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-400/30">
-                        <div className="flex items-center gap-2">
-                          <span className="text-cream/30 text-xs font-mono">×</span>
-                          <span className="text-cream/55 text-xs">Comisión ({barber.commission_pct}%)</span>
-                        </div>
-                        <span className="text-cream/70 text-sm font-medium">${fmt(svcs * barber.commission_pct / 100)}</span>
-                      </div>
+                      )}
                       {tips > 0 && (
                         <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-400/30">
                           <div className="flex items-center gap-2">
                             <span className="text-gold/50 text-xs">+</span>
-                            <span className="text-cream/55 text-xs">Propinas (100%)</span>
+                            <span className="text-cream/55 text-xs">Propinas (100% para él)</span>
                           </div>
                           <span className="text-gold/80 text-sm font-medium">+${fmt(tips)}</span>
                         </div>
@@ -350,85 +376,75 @@ export default function DayClosingPage() {
             </div>
           )}
 
-          {/* ── VENTAS SIN BARBERO ── */}
-          {noBarberSales.length > 0 && (
-            <div>
-              <SectionLabel>Ventas sin barbero asignado</SectionLabel>
-              <div className="card">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-cream/60 text-sm">{noBarberSales.length} {noBarberSales.length === 1 ? 'venta' : 'ventas'} sin barbero</p>
-                    <p className="text-cream/30 text-xs">Todo va al local</p>
-                  </div>
-                  <p className="font-display text-xl text-cream">${fmt(noBarberTotal)}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── LO DEL LOCAL ── */}
+          {/* ── PARA EL LOCAL ── */}
           <div>
-            <SectionLabel>Detalle del local</SectionLabel>
+            <SectionLabel>Para el local</SectionLabel>
             <div className="card">
-              <div className="flex items-end justify-between mb-4">
-                <div>
-                  <p className="text-cream/40 text-xs uppercase tracking-wider mb-1">Total para el local</p>
-                  <p className="font-display text-3xl text-cream">${fmt(totalShop)}</p>
-                </div>
-              </div>
+              <p className="text-cream/40 text-xs uppercase tracking-wider mb-1">Total para el local</p>
+              <p className="font-display text-3xl text-cream mb-4">${fmt(totalShop)}</p>
+
               <div>
-                {shopFromSvcs > 0 && (
-                  <MoneyRow
-                    icon={Scissors}
-                    label="Comisión de servicios"
-                    sub="Lo que queda tras pagar a los barberos"
-                    amount={shopFromSvcs}
-                  />
+                {shopFromServices > 0 && (
+                  totalBarberServiceCommission > 0 ? (
+                    <>
+                      <div className="flex items-center justify-between px-4 py-2 border-b border-dark-400/15">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Scissors size={11} className="text-cream/20 shrink-0" />
+                          <span className="text-cream/35 text-xs">Servicios generados</span>
+                        </div>
+                        <span className="text-cream/40 text-sm shrink-0">${fmt(totalServicesAll)}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-2 border-b border-dark-400/15">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Minus size={11} className="text-red-400/40 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-cream/35 text-xs">Pagado a los barberos</p>
+                            <p className="text-cream/20 text-[11px]">Comisión sobre servicios</p>
+                          </div>
+                        </div>
+                        <span className="text-red-400/60 text-sm shrink-0">-${fmt(totalBarberServiceCommission)}</span>
+                      </div>
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-dark-400/30 bg-dark-400/25">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Equal size={12} className="text-cream/45 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-cream font-medium text-xs">Neto servicios para el local</p>
+                            {noBarberSales.length > 0 && (
+                              <p className="text-cream/30 text-[11px]">Incluye ${fmt(noBarberTotal)} sin barbero asignado</p>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-cream font-semibold text-sm shrink-0">${fmt(shopFromServices)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <MoneyRow
+                      icon={Scissors}
+                      label="Servicios"
+                      sub={noBarberSales.length > 0 ? `$${fmt(noBarberTotal)} sin barbero asignado` : 'Ventas de servicios'}
+                      amount={shopFromServices}
+                    />
+                  )
                 )}
                 {totalProducts > 0 && (
-                  <MoneyRow
-                    icon={ShoppingBag}
-                    label="Vitrina"
-                    sub="Productos vendidos · 100% local"
-                    amount={totalProducts}
-                  />
+                  <MoneyRow icon={ShoppingBag} label="Vitrina" sub="100% local" amount={totalProducts} />
                 )}
                 {totalDrinks > 0 && (
+                  <MoneyRow icon={Droplets} label="Bebidas" sub="100% local" amount={totalDrinks} />
+                )}
+                {totalSurcharge > 0 && (
                   <MoneyRow
-                    icon={Droplets}
-                    label="Bebidas"
-                    sub="100% local"
-                    amount={totalDrinks}
+                    icon={ArrowRightLeft}
+                    label="Recargo por método de pago"
+                    sub={surchargeMethods.length === 1
+                      ? `${surchargeMethods[0].name} +${Number(surchargeMethods[0].surcharge_pct)}% · 100% local`
+                      : 'Cargo extra a clientes que pagaron con recargo · 100% local'}
+                    amount={totalSurcharge}
                   />
                 )}
               </div>
             </div>
           </div>
-
-          {/* ── DESGLOSE DE SERVICIOS ── */}
-          {(totalServices > 0 || totalProducts > 0 || totalDrinks > 0 || totalTips > 0) && (
-            <div>
-              <SectionLabel>Desglose general</SectionLabel>
-              <div className="card">
-                {totalServices > 0 && (
-                  <MoneyRow icon={Scissors} label="Servicios" sub="Total bruto antes de comisiones" amount={totalServices} />
-                )}
-                {totalProducts > 0 && (
-                  <MoneyRow icon={ShoppingBag} label="Vitrina" amount={totalProducts} />
-                )}
-                {totalDrinks > 0 && (
-                  <MoneyRow icon={Droplets} label="Bebidas" amount={totalDrinks} />
-                )}
-                {totalTips > 0 && (
-                  <MoneyRow label="Propinas" sub="Van 100% al barbero" amount={totalTips} highlight />
-                )}
-                <div className="flex items-center justify-between pt-3 mt-1 border-t border-dark-400/40">
-                  <span className="text-cream/60 text-sm font-medium">Total</span>
-                  <span className="font-display text-xl text-gold">${fmt(grandTotal)}</span>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* ── COMPARTIR / DESCARGAR ── */}
           <button
@@ -450,6 +466,27 @@ export default function DayClosingPage() {
           </button>
         </div>
       )}
+
+      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.title || ''} size="md">
+        {detail && (
+          detail.sales.length === 0
+            ? <p className="text-cream/30 text-sm text-center py-4">Sin ventas</p>
+            : <div className="flex flex-col">
+                {[...detail.sales]
+                  .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+                  .map(s => (
+                    <SaleDetailRow
+                      key={s.id}
+                      sale={s}
+                      barbers={barbers}
+                      paymentMethods={paymentMethods}
+                      showBarber={detail.showBarber}
+                      showDate={!isSingle}
+                    />
+                  ))}
+              </div>
+        )}
+      </Modal>
     </div>
   )
 }
