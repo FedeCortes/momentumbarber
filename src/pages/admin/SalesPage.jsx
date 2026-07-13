@@ -193,7 +193,7 @@ export default function SalesPage() {
   }
 
   return (
-    <div className="pb-32 md:pb-6">
+    <div className="pb-56 md:pb-6">
       <h1 className="section-title mb-1">Nueva venta</h1>
       <p className="section-sub mb-5">Registro oficial de venta</p>
 
@@ -342,13 +342,13 @@ export default function SalesPage() {
       </div>
 
       {/* Footer sticky */}
-      <div className="fixed bottom-0 left-0 right-0 md:relative md:bottom-auto bg-dark-200 border-t border-dark-300 md:border md:rounded-xl p-4 md:card">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-cream/60 text-sm">Total</span>
-          <span className="font-display text-3xl text-gold">${grandTotal.toLocaleString('es-AR')}</span>
+      <div className="fixed bottom-[calc(4.5rem_+_env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 md:relative md:bottom-auto md:z-auto bg-dark-200 border-t border-dark-300 md:border md:rounded-xl p-3 sm:p-4 md:card">
+        <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
+          <span className="text-cream/60 text-sm shrink-0">Total</span>
+          <span className="font-display text-2xl sm:text-3xl text-gold truncate">${grandTotal.toLocaleString('es-AR')}</span>
         </div>
         {grandTotal > 0 && (
-          <div className="text-xs text-cream/30 mb-3 flex gap-4 flex-wrap">
+          <div className="text-[11px] sm:text-xs text-cream/30 mb-2 sm:mb-3 flex gap-x-3 gap-y-1 flex-wrap">
             {totalServices > 0 && <span>Servicios: ${totalServices.toLocaleString('es-AR')}</span>}
             {totalProducts > 0 && <span>Vitrina: ${totalProducts.toLocaleString('es-AR')}</span>}
             {totalDrinks > 0 && <span>Bebidas: ${totalDrinks.toLocaleString('es-AR')}</span>}

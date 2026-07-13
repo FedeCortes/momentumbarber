@@ -155,7 +155,7 @@ export default function AdminLayout() {
       </div>
 
       {/* ── Bottom nav mobile ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-dark-400/40 z-30"
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-dark-400/40 z-30 pb-[env(safe-area-inset-bottom,0px)]"
            style={{ background: 'rgb(var(--surface-card))' }}>
 
         {/* Bandeja "Más" */}

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'momentum-v1'
+const CACHE_NAME = 'momentum-v2'
 const PRECACHE = ['/']
 
 self.addEventListener('install', event => {
