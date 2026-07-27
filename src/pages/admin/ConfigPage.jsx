@@ -337,6 +337,7 @@ export default function ConfigPage() {
       <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
       <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice />
       <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice />
+      <CatalogSection title="Pagadores" tableName="expense_payers" tenantId={tenant.id} showPrice={false} />
       <PaymentMethodSection tenantId={tenant.id} />
 
       {/* Seguridad — colapsado por defecto */}

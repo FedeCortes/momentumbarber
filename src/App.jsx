@@ -16,6 +16,7 @@ import SalesPage from './pages/admin/SalesPage'
 import DraftsPage from './pages/admin/DraftsPage'
 import DayClosingPage from './pages/admin/DayClosingPage'
 import StatsPage from './pages/admin/StatsPage'
+import ExpensesPage from './pages/admin/ExpensesPage'
 
 import BarberDraftPage from './pages/barber/BarberDraftPage'
 import BarberHistoryPage from './pages/barber/BarberHistoryPage'
@@ -86,6 +87,7 @@ export default function App() {
         <Route path="config" element={<ConfigPage />} />
         <Route path="sales" element={<SalesPage />} />
         <Route path="drafts" element={<DraftsPage />} />
+        <Route path="expenses" element={<ExpensesPage />} />
         <Route path="closing" element={<DayClosingPage />} />
         <Route path="stats" element={<StatsPage />} />
       </Route>

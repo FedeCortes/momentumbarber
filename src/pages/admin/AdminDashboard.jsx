@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ShoppingBag, Users, TrendingUp, Moon, FileText, ArrowRight, AlertCircle } from 'lucide-react'
+import { ShoppingBag, Users, TrendingUp, Moon, FileText, ArrowRight, AlertCircle, ReceiptText } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { format } from 'date-fns'
@@ -8,27 +8,24 @@ import { es } from 'date-fns/locale'
 
 export default function AdminDashboard() {
   const { tenant } = useAuth()
-  const [stats, setStats] = useState({ todaySales: 0, todayTotal: 0, monthTotal: 0, barberCount: 0, todayDrafts: 0, todayShop: 0 })
+  const [stats, setStats] = useState({ todaySales: 0, todayTotal: 0, monthTotal: 0, barberCount: 0, todayDrafts: 0, todayShop: 0, monthExpenses: 0 })
   const [loading, setLoading] = useState(true)
   const today = format(new Date(), 'yyyy-MM-dd')
   const month = format(new Date(), 'yyyy-MM')
 
-  useEffect(() => {
-    if (!tenant?.id) return
-    loadStats()
-  }, [tenant?.id])
-
-  async function loadStats() {
-    const [salesDay, salesMonth, barbers, drafts] = await Promise.all([
+  const loadStats = useCallback(async () => {
+    const [salesDay, salesMonth, barbers, drafts, expensesMonth] = await Promise.all([
       supabase.from('sales').select('total, shop_earnings').eq('tenant_id', tenant.id).eq('sale_date', today),
       supabase.from('sales').select('total').eq('tenant_id', tenant.id).gte('sale_date', month + '-01'),
       supabase.from('barbers').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('is_active', true),
       supabase.from('drafts').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('draft_date', today),
+      supabase.from('expenses').select('total_price').eq('tenant_id', tenant.id).gte('expense_date', month + '-01'),
     ])
 
     const todayTotal = (salesDay.data || []).reduce((s, r) => s + Number(r.total), 0)
     const todayShop  = (salesDay.data || []).reduce((s, r) => s + Number(r.shop_earnings), 0)
     const monthTotal = (salesMonth.data || []).reduce((s, r) => s + Number(r.total), 0)
+    const monthExpenses = (expensesMonth.data || []).reduce((s, r) => s + Number(r.total_price), 0)
 
     setStats({
       todaySales:    salesDay.data?.length || 0,
@@ -37,9 +34,15 @@ export default function AdminDashboard() {
       monthTotal,
       barberCount:  barbers.count || 0,
       todayDrafts:  drafts.count || 0,
+      monthExpenses,
     })
     setLoading(false)
-  }
+  }, [tenant?.id, today, month])
+
+  useEffect(() => {
+    if (!tenant?.id) return
+    loadStats()
+  }, [tenant?.id, loadStats])
 
   const todayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es })
 
@@ -92,8 +95,8 @@ export default function AdminDashboard() {
             <span className="font-display text-2xl text-cream">${stats.monthTotal.toLocaleString('es-AR')}</span>
           </div>
           <div className="stat-card">
-            <span className="stat-label">Barberos activos</span>
-            <span className="font-display text-2xl text-cream">{stats.barberCount}</span>
+            <span className="stat-label">Gastos mes</span>
+            <span className="font-display text-2xl text-red-400/85">${stats.monthExpenses.toLocaleString('es-AR')}</span>
           </div>
         </div>
       )}
@@ -104,8 +107,10 @@ export default function AdminDashboard() {
         {[
           { to: '/admin/sales',   label: 'Nueva venta',     sub: 'Registrar un servicio', icon: ShoppingBag, accent: 'text-gold bg-gold/12 border-gold/20' },
           { to: '/admin/drafts',  label: 'Registros',       sub: 'Ventas oficiales del día', icon: FileText,   accent: 'text-amber-400 bg-amber-500/12 border-amber-500/20' },
+          { to: '/admin/expenses', label: 'Gastos',          sub: 'Egresos separados del cierre', icon: ReceiptText, accent: 'text-red-400 bg-red-500/12 border-red-500/20' },
           { to: '/admin/closing', label: 'Cierre',          sub: 'Resumen y distribución', icon: Moon,       accent: 'text-purple-400 bg-purple-500/12 border-purple-500/20' },
           { to: '/admin/stats',   label: 'Estadísticas',    sub: 'Análisis de ventas',     icon: TrendingUp,  accent: 'text-emerald-400 bg-emerald-500/12 border-emerald-500/20' },
+          { to: '/admin/barbers', label: 'Barberos',        sub: `${stats.barberCount} activos`, icon: Users, accent: 'text-blue-400 bg-blue-500/12 border-blue-500/20' },
         ].map(({ to, label, sub, icon: Icon, accent }) => (
           <Link key={to} to={to} className="card-hover flex flex-col gap-3 group">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${accent}`}>

@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Settings, ShoppingBag,
-  FileText, Moon, BarChart2, LogOut, Scissors,
+  FileText, Moon, BarChart2, LogOut, Scissors, ReceiptText,
   ChevronDown, Sun, MoreHorizontal
 } from 'lucide-react'
 import { useState } from 'react'
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/admin/sales',    label: 'Nueva venta',   icon: ShoppingBag },
   { to: '/admin/barbers',  label: 'Barberos',      icon: Users },
   { to: '/admin/drafts',   label: 'Registros',     icon: FileText },
+  { to: '/admin/expenses', label: 'Gastos',        icon: ReceiptText },
   { to: '/admin/closing',  label: 'Cierre',        icon: Moon },
   { to: '/admin/stats',    label: 'Estadísticas',  icon: BarChart2 },
   { to: '/admin/config',   label: 'Configuración', icon: Settings },

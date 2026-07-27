@@ -161,6 +161,31 @@ create table public.draft_items (
 );
 
 -- ============================================================
+-- EXPENSE PAYERS
+-- ============================================================
+create table public.expense_payers (
+  id          uuid primary key default uuid_generate_v4(),
+  tenant_id   uuid not null references public.tenants(id) on delete cascade,
+  name        text not null,
+  created_at  timestamptz default now()
+);
+
+-- ============================================================
+-- EXPENSES (gastos operativos — no impactan el cierre)
+-- ============================================================
+create table public.expenses (
+  id            uuid primary key default uuid_generate_v4(),
+  tenant_id     uuid not null references public.tenants(id) on delete cascade,
+  payer_id      uuid references public.expense_payers(id),
+  name          text not null,
+  total_price   numeric(10,2) not null default 0,
+  paid_by       text,
+  detail        text,
+  expense_date  date not null default current_date,
+  created_at    timestamptz default now()
+);
+
+-- ============================================================
 -- TENANT CONFIG (contraseña admin, etc.)
 -- ============================================================
 create table public.tenant_config (
@@ -180,10 +205,12 @@ alter table public.services         enable row level security;
 alter table public.products         enable row level security;
 alter table public.drinks           enable row level security;
 alter table public.payment_methods  enable row level security;
+alter table public.expense_payers   enable row level security;
 alter table public.sales            enable row level security;
 alter table public.sale_items       enable row level security;
 alter table public.drafts           enable row level security;
 alter table public.draft_items      enable row level security;
+alter table public.expenses         enable row level security;
 alter table public.tenant_config    enable row level security;
 
 -- Helper: obtener tenant_id del usuario autenticado
@@ -221,7 +248,8 @@ create policy "drinks_tenant"   on public.drinks for all using (tenant_id = publ
 
 create policy "pm_root"         on public.payment_methods for all using (public.my_role() = 'root');
 create policy "pm_tenant"       on public.payment_methods for all using (tenant_id = public.my_tenant_id());
-
+create policy "expense_payers_root" on public.expense_payers for all using (public.my_role() = 'root');
+create policy "expense_payers_tenant" on public.expense_payers for all using (tenant_id = public.my_tenant_id());
 create policy "sales_root"      on public.sales for all using (public.my_role() = 'root');
 create policy "sales_tenant"    on public.sales for all using (tenant_id = public.my_tenant_id());
 
@@ -235,6 +263,9 @@ create policy "drafts_tenant"   on public.drafts for all using (tenant_id = publ
 create policy "draft_items_root"   on public.draft_items for all using (public.my_role() = 'root');
 create policy "draft_items_tenant" on public.draft_items for all
   using (exists (select 1 from public.drafts d where d.id = draft_id and d.tenant_id = public.my_tenant_id()));
+
+create policy "expenses_root"      on public.expenses for all using (public.my_role() = 'root');
+create policy "expenses_tenant"    on public.expenses for all using (tenant_id = public.my_tenant_id());
 
 create policy "config_root"     on public.tenant_config for all using (public.my_role() = 'root');
 create policy "config_tenant"   on public.tenant_config for all using (tenant_id = public.my_tenant_id());
