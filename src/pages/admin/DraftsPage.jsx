@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileText, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Receipt, Plus, Minus, Pencil, Trash2, ClipboardList, X, ArrowRightLeft } from 'lucide-react'
+import { FileText, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Receipt, Plus, Minus, Pencil, Trash2, ClipboardList, ArrowRightLeft } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import EmptyState from '../../components/ui/EmptyState'
@@ -11,8 +11,10 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Link } from 'react-router-dom'
 
+const rowTotal = r => Number(r.total || 0) + Number(r.surcharge_amt || 0)
+
 // ── Borrador — solo referencia, con copiado a oficial y edición/borrado para admin ──
-function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin, onDelete }) {
+function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin, onDelete, compact }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState(null)
   const [working, setWorking] = useState(false)
@@ -191,20 +193,20 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
 
   return (
     <>
-      <div className="border border-dark-400 rounded-xl overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3">
-          <button onClick={toggle} className="flex-1 text-left">
+      <div className={`border rounded-xl overflow-hidden ${compact ? 'border-gold/25 bg-gold/[0.04]' : 'border-dark-400'}`}>
+        <div className={`flex items-center gap-2 ${compact ? 'px-2.5 py-2' : 'px-4 py-3'}`}>
+          <button onClick={toggle} className="flex-1 text-left min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-display text-base text-gold">${(Number(draft.total) + Number(draft.surcharge_amt || 0)).toLocaleString('es-AR')}</span>
+              <span className={`font-display text-gold ${compact ? 'text-[15px]' : 'text-base'}`}>${rowTotal(draft).toLocaleString('es-AR')}</span>
             </div>
-            <div className="flex gap-3 mt-0.5 flex-wrap">
-              {showDate && <span className="text-gold/50 text-xs">{format(new Date(draft.draft_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
-              <span className="text-cream/30 text-xs">{pm?.name || '—'}</span>
-              <span className="text-cream/30 text-xs">{format(new Date(draft.created_at), 'HH:mm')}</span>
-              {Number(draft.tip) > 0 && <span className="text-cream/30 text-xs">Propina ${Number(draft.tip).toLocaleString('es-AR')}</span>}
+            <div className={`flex mt-0.5 flex-wrap ${compact ? 'gap-x-2 gap-y-0.5' : 'gap-3'}`}>
+              {showDate && <span className={`text-gold/50 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(draft.draft_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
+              <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>{pm?.name || '—'}</span>
+              <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(draft.created_at), 'HH:mm')}</span>
+              {Number(draft.tip) > 0 && <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>Propina ${Number(draft.tip).toLocaleString('es-AR')}</span>}
             </div>
           </button>
-          {isAdmin && (
+          {isAdmin && !compact && (
             <div className="flex gap-1 shrink-0">
               <button onClick={openEdit} disabled={loadingEdit} className="btn-ghost p-1.5">
                 <Pencil size={14} className="text-cream/40 hover:text-cream/70" />
@@ -220,7 +222,7 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
         </div>
 
         {open && (
-          <div className="border-t border-dark-400 px-4 py-3">
+          <div className={`border-t border-dark-400 py-3 ${compact ? 'px-2.5' : 'px-4'}`}>
             {items && items.length > 0 ? (
               <div className="flex flex-col gap-1 mb-3">
                 {items.map(it => (
@@ -246,7 +248,7 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
               <p className="text-cream/25 text-xs mb-3">Sin detalle de ítems</p>
             )}
 
-            {isAdmin && (
+            {isAdmin && !compact && (
               <button
                 disabled={working}
                 onClick={copyToOfficial}
@@ -254,6 +256,17 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
               >
                 <ArrowRightLeft size={13} /> {working ? 'Creando...' : 'Copiar a venta oficial'}
               </button>
+            )}
+
+            {isAdmin && compact && (
+              <div className="flex gap-1.5">
+                <button onClick={openEdit} disabled={loadingEdit} className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg border border-dark-400 text-cream/50 text-[11px] hover:text-cream transition-colors">
+                  <Pencil size={11} /> Editar
+                </button>
+                <button onClick={() => setDeleteOpen(true)} className="flex items-center justify-center px-2.5 py-1.5 rounded-lg border border-dark-400 text-red-400/60 hover:text-red-400 transition-colors">
+                  <Trash2 size={11} />
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -384,7 +397,7 @@ function EditItemPicker({ items, selected, onToggle }) {
 }
 
 // ── Venta oficial — con edición/borrado para admin ────────────────────────────
-function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }) {
+function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, compact }) {
   const [open, setOpen]         = useState(false)
   const [items, setItems]       = useState(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -532,20 +545,20 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
 
   return (
     <>
-      <div className="border border-dark-400 rounded-xl overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3">
-          <button onClick={toggle} className="flex-1 text-left">
+      <div className={`border rounded-xl overflow-hidden ${compact ? 'border-dark-400/70 bg-dark-300/25' : 'border-dark-400'}`}>
+        <div className={`flex items-center gap-2 ${compact ? 'px-2.5 py-2' : 'px-4 py-3'}`}>
+          <button onClick={toggle} className="flex-1 text-left min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-display text-base text-cream">${(Number(sale.total) + Number(sale.surcharge_amt || 0)).toLocaleString('es-AR')}</span>
+              <span className={`font-display text-cream ${compact ? 'text-[15px]' : 'text-base'}`}>${rowTotal(sale).toLocaleString('es-AR')}</span>
             </div>
-            <div className="flex gap-3 mt-0.5 flex-wrap">
-              {showDate && <span className="text-gold/50 text-xs">{format(new Date(sale.sale_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
-              <span className="text-cream/30 text-xs">{pm?.name || '—'}</span>
-              <span className="text-cream/30 text-xs">{format(new Date(sale.created_at), 'HH:mm')}</span>
-              {Number(sale.tip) > 0 && <span className="text-cream/30 text-xs">Propina ${Number(sale.tip).toLocaleString('es-AR')}</span>}
+            <div className={`flex mt-0.5 flex-wrap ${compact ? 'gap-x-2 gap-y-0.5' : 'gap-3'}`}>
+              {showDate && <span className={`text-gold/50 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(sale.sale_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
+              <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>{pm?.name || '—'}</span>
+              <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(sale.created_at), 'HH:mm')}</span>
+              {Number(sale.tip) > 0 && <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>Propina ${Number(sale.tip).toLocaleString('es-AR')}</span>}
             </div>
           </button>
-          {isAdmin && (
+          {isAdmin && !compact && (
             <div className="flex gap-1 shrink-0">
               <button
                 onClick={openEdit}
@@ -565,7 +578,7 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
         </div>
 
         {open && items && (
-          <div className="border-t border-dark-400 px-4 py-3">
+          <div className={`border-t border-dark-400 py-3 ${compact ? 'px-2.5' : 'px-4'}`}>
             {items.length > 0 ? (
               <div className="flex flex-col gap-1">
                 {items.map(it => (
@@ -589,6 +602,17 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate }
               </div>
             ) : (
               <p className="text-cream/25 text-xs">Sin detalle de ítems</p>
+            )}
+
+            {isAdmin && compact && (
+              <div className="flex gap-1.5 mt-3">
+                <button onClick={openEdit} disabled={loadingEdit} className="flex-1 flex items-center justify-center gap-1 py-1.5 rounded-lg border border-dark-400 text-cream/50 text-[11px] hover:text-cream transition-colors">
+                  <Pencil size={11} /> Editar
+                </button>
+                <button onClick={() => setDeleteOpen(true)} className="flex items-center justify-center px-2.5 py-1.5 rounded-lg border border-dark-400 text-red-400/60 hover:text-red-400 transition-colors">
+                  <Trash2 size={11} />
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -756,24 +780,61 @@ function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods
   )
 }
 
-// ── Card de un barbero — panel lateral, solo registros de referencia ─────────
-function DraftBarberCard({ barber, drafts, barbers, paymentMethods, isAdmin, isSingle, onChange }) {
+// ── Card de comparación — las dos listas, una al lado de la otra ─────────────
+function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods, isAdmin, isSingle, onRefresh, addSaleLink }) {
+  const officialTotal = sales.reduce((s, r) => s + rowTotal(r), 0)
+  const draftTotal    = drafts.reduce((s, r) => s + rowTotal(r), 0)
+
   return (
     <div className="card mb-4">
       <div className="flex items-center gap-3 mb-3">
-        <div className="w-8 h-8 rounded-full bg-dark-300 flex items-center justify-center font-display text-gold text-sm shrink-0">
-          {barber.name[0].toUpperCase()}
+        {avatar}
+        <div className="flex-1 min-w-0">
+          <p className="font-medium text-cream truncate">{name}</p>
+          {sub && <p className="text-cream/40 text-xs">{sub}</p>}
         </div>
-        <span className="font-medium text-cream text-sm">{barber.name}</span>
       </div>
-      {drafts.length === 0
-        ? <p className="text-cream/25 text-sm text-center py-3">Sin registros este día</p>
-        : <div className="flex flex-col gap-2">
-            {drafts.map(d => (
-              <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onChange={onChange} showDate={!isSingle} isAdmin={isAdmin} onDelete={onChange} />
-            ))}
-          </div>
-      }
+
+      {/* Encabezados de columna con el total de cada lado */}
+      <div className="grid grid-cols-2 gap-2 mb-2">
+        <div className="flex items-baseline justify-between gap-1 rounded-lg bg-dark-300/40 border border-dark-400/50 px-2.5 py-1.5">
+          <span className="text-cream/45 text-[10px] font-bold uppercase tracking-wide">Oficial</span>
+          <span className="font-display text-sm text-cream">${officialTotal.toLocaleString('es-AR')}</span>
+        </div>
+        <div className="flex items-baseline justify-between gap-1 rounded-lg bg-gold/[0.07] border border-gold/25 px-2.5 py-1.5">
+          <span className="text-gold/60 text-[10px] font-bold uppercase tracking-wide">Barbero</span>
+          <span className="font-display text-sm text-gold">${draftTotal.toLocaleString('es-AR')}</span>
+        </div>
+      </div>
+
+      {/* Las dos listas completas, una al lado de la otra */}
+      <div className="grid grid-cols-2 gap-2 items-start">
+        <div className="flex flex-col gap-2">
+          {sales.length === 0
+            ? <p className="text-cream/25 text-xs text-center py-3">Sin ventas</p>
+            : sales.map(s => (
+                <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} compact />
+              ))
+          }
+        </div>
+        <div className="flex flex-col gap-2">
+          {drafts.length === 0
+            ? <p className="text-cream/25 text-xs text-center py-3">Sin registros</p>
+            : drafts.map(d => (
+                <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onChange={onRefresh} onDelete={onRefresh} showDate={!isSingle} isAdmin={isAdmin} compact />
+              ))
+          }
+        </div>
+      </div>
+
+      {isAdmin && addSaleLink && (
+        <Link
+          to="/admin/sales"
+          className="flex items-center justify-center gap-2 py-2.5 mt-3 rounded-lg border border-dashed border-dark-400 text-cream/40 hover:border-gold/40 hover:text-gold text-xs transition-colors"
+        >
+          <Plus size={14} /> Registrar nueva venta
+        </Link>
+      )}
     </div>
   )
 }
@@ -826,42 +887,50 @@ export default function DraftsPage() {
   const isSingle        = from === to
   const draftsInRange   = drafts.length
 
-  const draftsPanel = (
+  // Vista comparada: oficial (izq) vs borrador del barbero (der), fila contra fila
+  const compareView = (
     <>
       {activeBarbers.map(barber => (
-        <DraftBarberCard
+        <CompareCard
           key={barber.id}
-          barber={barber}
+          avatar={
+            <div className="w-10 h-10 rounded-full bg-dark-300 flex items-center justify-center font-display text-gold text-lg shrink-0">
+              {barber.name[0].toUpperCase()}
+            </div>
+          }
+          name={barber.name}
+          sales={sales.filter(s => s.barber_id === barber.id)}
           drafts={drafts.filter(d => d.barber_id === barber.id)}
           barbers={barbers}
           paymentMethods={paymentMethods}
           isAdmin={isAdmin}
           isSingle={isSingle}
-          onChange={load}
+          onRefresh={load}
+          addSaleLink
         />
       ))}
 
-      {orphanDrafts.length > 0 && (
-        <div className="card mb-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-dark-300 flex items-center justify-center shrink-0">
-              <FileText size={14} className="text-cream/40" />
+      {(shopOnlySales.length > 0 || orphanDrafts.length > 0) && (
+        <CompareCard
+          avatar={
+            <div className="w-10 h-10 rounded-full bg-dark-300 flex items-center justify-center shrink-0">
+              <Receipt size={18} className="text-cream/40" />
             </div>
-            <div>
-              <p className="font-medium text-cream text-sm">Sin barbero</p>
-              <p className="text-cream/40 text-xs">Registrados sin asignar</p>
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            {orphanDrafts.map(d => (
-              <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onChange={load} showDate={!isSingle} isAdmin={isAdmin} onDelete={load} />
-            ))}
-          </div>
-        </div>
+          }
+          name="Sin barbero"
+          sub="Ventas y registros sin asignar"
+          sales={shopOnlySales}
+          drafts={orphanDrafts}
+          barbers={barbers}
+          paymentMethods={paymentMethods}
+          isAdmin={isAdmin}
+          isSingle={isSingle}
+          onRefresh={load}
+        />
       )}
 
-      {activeBarbers.length === 0 && orphanDrafts.length === 0 && (
-        <p className="text-cream/25 text-sm text-center py-6">Sin registros de barberos este día</p>
+      {activeBarbers.length === 0 && shopOnlySales.length === 0 && orphanDrafts.length === 0 && (
+        <EmptyState icon={FileText} title="Sin movimientos" description="No hay ventas ni registros para esta fecha" />
       )}
     </>
   )
@@ -881,7 +950,7 @@ export default function DraftsPage() {
                 showDrafts ? 'border-gold/50 bg-gold/10 text-gold' : 'border-dark-400 text-cream/50 hover:text-cream/80'
               }`}
             >
-              <ClipboardList size={14} /> Borradores <span className="opacity-60">({draftsInRange})</span>
+              <ClipboardList size={14} /> {showDrafts ? 'Comparando' : 'Borradores'} <span className="opacity-60">({draftsInRange})</span>
             </button>
           )}
         </div>
@@ -893,7 +962,7 @@ export default function DraftsPage() {
           <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className={showDrafts ? 'lg:grid lg:grid-cols-[1fr_320px] lg:gap-5 lg:items-start' : ''}>
+        showDrafts ? compareView : (
           <div>
             {activeBarbers.length === 0 && shopOnlySales.length === 0 ? (
               <EmptyState icon={FileText} title="Sin ventas oficiales" description="No hay ventas oficiales registradas para esta fecha" />
@@ -934,25 +1003,7 @@ export default function DraftsPage() {
               </>
             )}
           </div>
-
-          {showDrafts && (
-            <>
-              <div className="fixed inset-0 bg-dark/70 z-40 lg:hidden" onClick={() => setShowDrafts(false)} />
-              <aside
-                className="fixed inset-x-0 bottom-0 z-50 max-h-[82vh] overflow-y-auto rounded-t-2xl border-t border-dark-400 px-4 pt-2 pb-6 lg:static lg:z-auto lg:max-h-none lg:overflow-visible lg:rounded-none lg:border-0 lg:px-0 lg:py-0"
-                style={{ background: 'rgb(var(--surface-card))' }}
-              >
-                <div className="flex items-center justify-between py-3 lg:pb-3 lg:pt-0">
-                  <p className="text-cream/60 text-xs font-bold uppercase tracking-wide">Borradores por barbero</p>
-                  <button onClick={() => setShowDrafts(false)} className="lg:hidden btn-ghost p-1.5">
-                    <X size={16} className="text-cream/40" />
-                  </button>
-                </div>
-                {draftsPanel}
-              </aside>
-            </>
-          )}
-        </div>
+        )
       )}
     </div>
   )
