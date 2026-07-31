@@ -159,6 +159,7 @@ export default function SalesPage() {
   }
 
   async function handleSubmit() {
+    if (!chosen) return toast.error('Elegí quién atendió (o "Solo local")')
     if (!hasServices && !hasShopItems) return toast.error('Agregá al menos un ítem')
     if (!paymentMethod) return toast.error('Seleccioná el método de pago')
     setLoading(true)
@@ -224,7 +225,7 @@ export default function SalesPage() {
 
       {/* ── 1. Quién atiende — define qué servicios se ven y con qué % ── */}
       <div className="card mb-3">
-        <label className="label">¿Quién lo atendió?</label>
+        <label className="label">¿Quién lo atendió? *</label>
         <div className="flex flex-wrap gap-2 mt-1">
           {barbers.map(b => (
             <button
@@ -380,7 +381,7 @@ export default function SalesPage() {
 
       {/* Método de pago */}
       <div className="card mb-4">
-        <label className="label">Método de pago</label>
+        <label className="label">Método de pago *</label>
         <div className="flex flex-wrap gap-2 mt-1">
           {paymentMethods.map(pm => (
             <button

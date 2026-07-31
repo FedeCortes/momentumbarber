@@ -179,6 +179,7 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, onChange, showDa
   async function handleSave() {
     if (!Object.keys(selServices).length && !Object.keys(selProducts).length && !Object.keys(selDrinks).length)
       return toast.error('Agregá al menos un ítem')
+    if (!editPayment) return toast.error('Elegí el método de pago')
     setSaving(true)
     try {
       await supabase.from('drafts').update({
@@ -351,7 +352,7 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, onChange, showDa
               </div>
             </div>
             <div>
-              <label className="label">Método de pago</label>
+              <label className="label">Método de pago *</label>
               <select className="input-dark" value={editPayment} onChange={e => setEditPayment(e.target.value)}>
                 <option value="">—</option>
                 {paymentMethods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -544,6 +545,7 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, isAdmin, onRefresh
     if (!Object.keys(selServices).length && !Object.keys(selProducts).length && !Object.keys(selDrinks).length) {
       return toast.error('Agregá al menos un ítem')
     }
+    if (!editPayment) return toast.error('Elegí el método de pago')
     setSaving(true)
     try {
       // Reparto servicio por servicio según la config de ese barbero
@@ -729,7 +731,7 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, isAdmin, onRefresh
 
             {/* Método de pago */}
             <div>
-              <label className="label">Método de pago</label>
+              <label className="label">Método de pago *</label>
               <select className="input-dark" value={editPayment} onChange={e => setEditPayment(e.target.value)}>
                 <option value="">—</option>
                 {paymentMethods.map(pm => <option key={pm.id} value={pm.id}>{pm.name}</option>)}

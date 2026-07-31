@@ -248,6 +248,7 @@ export default function BarberDraftPage() {
       || Object.keys(selProducts).length > 0
       || Object.keys(selDrinks).length > 0
     if (!hasItems) return toast.error('Agregá al menos un ítem')
+    if (!paymentMethod) return toast.error('Elegí el método de pago')
 
     setLoading(true)
     try {
@@ -429,7 +430,7 @@ export default function BarberDraftPage() {
 
       {/* Método de pago */}
       <div className="card !p-3 mb-2">
-        <label className="label mb-2">Método de pago</label>
+        <label className="label mb-2">Método de pago *</label>
         <div className="flex flex-wrap gap-1.5">
           {paymentMethods.map(pm => (
             <button
