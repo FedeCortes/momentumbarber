@@ -58,6 +58,21 @@ create table public.services (
 );
 
 -- ============================================================
+-- BARBER_SERVICES (config de cada barbero para cada servicio)
+-- ============================================================
+-- Sin fila = el servicio le aparece y cobra su % general
+create table public.barber_services (
+  id             uuid primary key default uuid_generate_v4(),
+  tenant_id      uuid not null references public.tenants(id) on delete cascade,
+  barber_id      uuid not null references public.barbers(id) on delete cascade,
+  service_id     uuid not null references public.services(id) on delete cascade,
+  is_enabled     boolean not null default true,   -- false = no le aparece
+  commission_pct numeric(5,2) check (commission_pct is null or (commission_pct >= 0 and commission_pct <= 100)),
+  created_at     timestamptz default now(),
+  unique (barber_id, service_id)
+);
+
+-- ============================================================
 -- PRODUCTS (vitrina — 100% para el local)
 -- ============================================================
 create table public.products (
@@ -124,6 +139,8 @@ create table public.sale_items (
   name        text not null,
   price       numeric(10,2) not null,
   quantity    int not null default 1,
+  -- % aplicado al momento de la venta (solo servicios) — congela el reparto histórico
+  commission_pct numeric(5,2),
   subtotal    numeric(10,2) generated always as (price * quantity) stored
 );
 
@@ -157,6 +174,7 @@ create table public.draft_items (
   name        text not null,
   price       numeric(10,2) not null,
   quantity    int not null default 1,
+  commission_pct numeric(5,2),
   subtotal    numeric(10,2) generated always as (price * quantity) stored
 );
 
@@ -210,6 +228,7 @@ alter table public.sales            enable row level security;
 alter table public.sale_items       enable row level security;
 alter table public.drafts           enable row level security;
 alter table public.draft_items      enable row level security;
+alter table public.barber_services  enable row level security;
 alter table public.expenses         enable row level security;
 alter table public.tenant_config    enable row level security;
 
@@ -263,6 +282,9 @@ create policy "drafts_tenant"   on public.drafts for all using (tenant_id = publ
 create policy "draft_items_root"   on public.draft_items for all using (public.my_role() = 'root');
 create policy "draft_items_tenant" on public.draft_items for all
   using (exists (select 1 from public.drafts d where d.id = draft_id and d.tenant_id = public.my_tenant_id()));
+
+create policy "barber_services_root"   on public.barber_services for all using (public.my_role() = 'root');
+create policy "barber_services_tenant" on public.barber_services for all using (tenant_id = public.my_tenant_id());
 
 create policy "expenses_root"      on public.expenses for all using (public.my_role() = 'root');
 create policy "expenses_tenant"    on public.expenses for all using (tenant_id = public.my_tenant_id());

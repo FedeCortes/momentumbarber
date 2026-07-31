@@ -6,6 +6,8 @@ import EmptyState from '../../components/ui/EmptyState'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import Modal from '../../components/ui/Modal'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
+import CommissionBadge from '../../components/ui/CommissionBadge'
+import { splitServices, buildServiceItems, groupByPct, servicePct, hasCustomPct, isServiceEnabled, overridesByBarber } from '../../lib/earnings'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -13,8 +15,27 @@ import { Link } from 'react-router-dom'
 
 const rowTotal = r => Number(r.total || 0) + Number(r.surcharge_amt || 0)
 
+// Línea de detalle: muestra con qué % se pagó cada servicio
+function ItemLine({ it, barber }) {
+  const pct  = it.commission_pct != null ? Number(it.commission_pct) : null
+  const show = it.item_type === 'service' && pct != null
+  return (
+    <div className="flex justify-between gap-2 text-sm">
+      <span className="text-cream/60 min-w-0">
+        {it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
+        {show && (
+          <span className="ml-1.5 align-middle inline-block">
+            <CommissionBadge pct={pct} size="xs" isDefault={pct === Number(barber?.commission_pct)} barberName={barber?.name?.split(' ')[0]} />
+          </span>
+        )}
+      </span>
+      <span className="text-cream/40 shrink-0">${Number(it.subtotal).toLocaleString('es-AR')}</span>
+    </div>
+  )
+}
+
 // ── Borrador — solo referencia, con copiado a oficial y edición/borrado para admin ──
-function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin, onDelete, compact }) {
+function DraftRow({ draft, barbers, paymentMethods, barberSvcs, onChange, showDate, isAdmin, onDelete, compact }) {
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState(null)
   const [working, setWorking] = useState(false)
@@ -47,14 +68,18 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
     try {
       const { data: draftItems } = await supabase.from('draft_items').select('*').eq('draft_id', draft.id)
       const barber = barbers.find(b => b.id === draft.barber_id)
-      const commission    = barber?.commission_pct || 0
       const tipAmt        = Number(draft.tip) || 0
       const totalServices = Number(draft.total_services) || 0
       const totalProducts = Number(draft.total_products) || 0
       const totalDrinks   = Number(draft.total_drinks) || 0
       const draftSurcharge = Number(draft.surcharge_amt) || 0
-      const barberEarnings = totalServices * (commission / 100) + tipAmt
-      const shopEarnings   = totalServices * (1 - commission / 100) + totalProducts + totalDrinks + draftSurcharge
+      // Se respeta el % que quedó guardado en cada ítem del borrador
+      const commissionAmt  = barber
+        ? groupByPct(draftItems || [], barber).reduce((sum, g) => sum + g.barberAmt, 0)
+        : 0
+      const barberEarnings = barber ? commissionAmt + tipAmt : 0
+      // Sin barbero, la propina queda para el local
+      const shopEarnings   = totalServices - commissionAmt + totalProducts + totalDrinks + draftSurcharge + (barber ? 0 : tipAmt)
 
       const { data: sale, error: saleErr } = await supabase.from('sales').insert({
         tenant_id:         draft.tenant_id,
@@ -74,7 +99,13 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
 
       if (draftItems?.length) {
         await supabase.from('sale_items').insert(
-          draftItems.map(({ id, draft_id, subtotal, ...rest }) => ({ ...rest, sale_id: sale.id }))
+          draftItems.map(({ id, draft_id, subtotal, ...rest }) => ({
+            ...rest,
+            sale_id: sale.id,
+            commission_pct: rest.item_type === 'service' && barber
+              ? (rest.commission_pct != null ? rest.commission_pct : barber.commission_pct)
+              : null,
+          }))
         )
       }
       toast.success('Venta oficial creada')
@@ -129,6 +160,12 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
     }, 0)
   }
 
+  const editBarberObj = barbers.find(b => b.id === editBarber) || null
+  const eOverrides   = editBarberObj ? barberSvcs?.[editBarberObj.id] : null
+  const eSplit       = splitServices(selServices, catalog.services, editBarberObj, eOverrides)
+  const eCommissionOf = s => editBarberObj
+    ? { pct: servicePct(s, editBarberObj, eOverrides), isDefault: !hasCustomPct(s, eOverrides), barberName: editBarberObj.name.split(' ')[0] }
+    : null
   const eTotalSvc    = calcAmt(selServices, catalog.services)
   const eTotalPrd    = calcAmt(selProducts, catalog.products)
   const eTotalDrk    = calcAmt(selDrinks,   catalog.drinks)
@@ -155,10 +192,7 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
       }).eq('id', draft.id)
 
       const newItems = [
-        ...Object.entries(selServices).map(([id, qty]) => {
-          const it = catalog.services.find(s => s.id === id)
-          return { draft_id: draft.id, item_type: 'service', item_id: id, name: it.name, price: it.price, quantity: qty }
-        }),
+        ...buildServiceItems(selServices, catalog.services, editBarberObj, eOverrides, { draft_id: draft.id }),
         ...Object.entries(selProducts).map(([id, qty]) => {
           const it = catalog.products.find(p => p.id === id)
           return { draft_id: draft.id, item_type: 'product', item_id: id, name: it.name, price: it.price, quantity: qty }
@@ -225,12 +259,7 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
           <div className={`border-t border-dark-400 py-3 ${compact ? 'px-2.5' : 'px-4'}`}>
             {items && items.length > 0 ? (
               <div className="flex flex-col gap-1 mb-3">
-                {items.map(it => (
-                  <div key={it.id} className="flex justify-between text-sm">
-                    <span className="text-cream/60">{it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}</span>
-                    <span className="text-cream/40">${Number(it.subtotal).toLocaleString('es-AR')}</span>
-                  </div>
-                ))}
+                {items.map(it => <ItemLine key={it.id} it={it} barber={barbers.find(b => b.id === draft.barber_id)} />)}
                 {Number(draft.tip) > 0 && (
                   <div className="flex justify-between text-sm border-t border-dark-400 pt-1 mt-1">
                     <span className="text-cream/60">Propina</span>
@@ -281,7 +310,7 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
                 <label className="label mb-0">Servicios</label>
                 {eTotalSvc > 0 && <span className="text-gold text-sm font-semibold">${eTotalSvc.toLocaleString('es-AR')}</span>}
               </div>
-              <EditItemPicker items={catalog.services} selected={selServices} onToggle={(it, d) => toggleItem(setSelServices, it, d)} />
+              <EditItemPicker items={catalog.services} selected={selServices} onToggle={(it, d) => toggleItem(setSelServices, it, d)} commissionOf={eCommissionOf} />
             </div>
           )}
           {catalog.products.length > 0 && (
@@ -311,19 +340,40 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
               </select>
             </div>
             <div>
+              <label className="label">
+                Propina <span className="text-cream/30 font-normal normal-case tracking-normal">
+                  (100% para {editBarberObj ? 'el barbero' : 'el local'})
+                </span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-cream/40 text-sm">$</span>
+                <input type="number" min="0" className="input-dark" value={editTip} onChange={e => setEditTip(e.target.value)} placeholder="0" />
+              </div>
+            </div>
+            <div>
               <label className="label">Método de pago</label>
               <select className="input-dark" value={editPayment} onChange={e => setEditPayment(e.target.value)}>
                 <option value="">—</option>
                 {paymentMethods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            <div>
-              <label className="label">Propina</label>
-              <div className="flex items-center gap-2">
-                <span className="text-cream/40 text-sm">$</span>
-                <input type="number" min="0" className="input-dark" value={editTip} onChange={e => setEditTip(e.target.value)} placeholder="0" />
+            {editBarberObj && eSplit.lines.length > 0 && (
+              <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1 bg-dark-300/40 rounded-lg px-3 py-2">
+                    <p className="text-cream/35 text-[10px] uppercase tracking-wide font-bold mb-0.5">Comisión por servicio</p>
+                    {eSplit.lines.map(l => (
+                      <div key={l.service.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-cream/50 truncate">{l.service.name}{l.qty > 1 ? ` ×${l.qty}` : ''}</span>
+                        <span className="flex items-center gap-1.5 shrink-0">
+                          <span className={l.custom ? 'text-violet-300 font-semibold' : 'text-cream/35'}>{l.pct}%</span>
+                          <span className="text-gold/80">${l.forBarber.toLocaleString('es-AR')}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
               </div>
-            </div>
+            )}
+
             {eSurchargeAmt > 0 && (
               <div className="flex justify-between text-sm text-amber-400/80 bg-amber-400/8 border border-amber-400/15 rounded-lg px-3 py-2">
                 <span>Recargo {eSurchargePct}% ({eSelectedPm?.name})</span>
@@ -359,7 +409,7 @@ function DraftRow({ draft, barbers, paymentMethods, onChange, showDate, isAdmin,
 }
 
 // ── Item picker para el modal de edición ─────────────────────────────────────
-function EditItemPicker({ items, selected, onToggle }) {
+function EditItemPicker({ items, selected, onToggle, commissionOf }) {
   if (items.length === 0) return <p className="text-cream/30 text-xs text-center py-2">Sin ítems</p>
   return (
     <div className="flex flex-col gap-1.5">
@@ -379,6 +429,9 @@ function EditItemPicker({ items, selected, onToggle }) {
               <span className={`text-sm font-medium ${on ? 'text-cream' : 'text-cream/65'}`}>
                 {item.name}{qty > 1 && <span className="ml-1.5 text-gold text-xs font-bold">×{qty}</span>}
               </span>
+              {commissionOf?.(item) && (
+                <span className="ml-1.5 align-middle inline-block"><CommissionBadge {...commissionOf(item)} /></span>
+              )}
             </button>
             <span className={`text-sm shrink-0 ${on ? 'text-gold font-semibold' : 'text-cream/30'}`}>
               ${Number(item.price).toLocaleString('es-AR')}
@@ -397,7 +450,7 @@ function EditItemPicker({ items, selected, onToggle }) {
 }
 
 // ── Venta oficial — con edición/borrado para admin ────────────────────────────
-function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, compact }) {
+function SaleRow({ sale, barbers, paymentMethods, barberSvcs, isAdmin, onRefresh, showDate, compact }) {
   const [open, setOpen]         = useState(false)
   const [items, setItems]       = useState(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -479,10 +532,13 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, 
   const sSurchargeAmt  = sSurchargePct > 0 ? Math.round(sBase * sSurchargePct / 100) : 0
   const grandTotal     = sBase + tipAmt + sSurchargeAmt
 
-  const selectedBarber   = barbers.find(b => b.id === editBarber)
-  const barberEarningsPreview = selectedBarber
-    ? totalServices * (selectedBarber.commission_pct / 100) + tipAmt
-    : 0
+  const selectedBarber   = barbers.find(b => b.id === editBarber) || null
+  const sOverrides       = selectedBarber ? barberSvcs?.[selectedBarber.id] : null
+  const sSplit           = splitServices(selServices, catalog.services, selectedBarber, sOverrides)
+  const sCommissionOf    = s => selectedBarber
+    ? { pct: servicePct(s, selectedBarber, sOverrides), isDefault: !hasCustomPct(s, sOverrides), barberName: selectedBarber.name.split(' ')[0] }
+    : null
+  const barberEarningsPreview = selectedBarber ? sSplit.barberAmt + tipAmt : 0
 
   async function handleSave() {
     if (!Object.keys(selServices).length && !Object.keys(selProducts).length && !Object.keys(selDrinks).length) {
@@ -490,9 +546,10 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, 
     }
     setSaving(true)
     try {
-      const commission     = selectedBarber?.commission_pct || 0
-      const barberEarnings = totalServices * (commission / 100) + tipAmt
-      const shopEarnings   = totalServices * (1 - commission / 100) + totalProducts + totalDrinks + sSurchargeAmt
+      // Reparto servicio por servicio según la config de ese barbero
+      const barberEarnings = selectedBarber ? sSplit.barberAmt + tipAmt : 0
+      // Sin barbero, la propina queda para el local
+      const shopEarnings   = sSplit.shopAmt + totalProducts + totalDrinks + sSurchargeAmt + (selectedBarber ? 0 : tipAmt)
 
       await supabase.from('sales').update({
         payment_method_id: editPayment || null,
@@ -507,10 +564,7 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, 
       }).eq('id', sale.id)
 
       const newItems = [
-        ...Object.entries(selServices).map(([id, qty]) => {
-          const it = catalog.services.find(s => s.id === id)
-          return { sale_id: sale.id, item_type: 'service', item_id: id, name: it.name, price: it.price, quantity: qty }
-        }),
+        ...buildServiceItems(selServices, catalog.services, selectedBarber, sOverrides, { sale_id: sale.id }),
         ...Object.entries(selProducts).map(([id, qty]) => {
           const it = catalog.products.find(p => p.id === id)
           return { sale_id: sale.id, item_type: 'product', item_id: id, name: it.name, price: it.price, quantity: qty }
@@ -581,12 +635,7 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, 
           <div className={`border-t border-dark-400 py-3 ${compact ? 'px-2.5' : 'px-4'}`}>
             {items.length > 0 ? (
               <div className="flex flex-col gap-1">
-                {items.map(it => (
-                  <div key={it.id} className="flex justify-between text-sm">
-                    <span className="text-cream/60">{it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}</span>
-                    <span className="text-cream/40">${Number(it.subtotal).toLocaleString('es-AR')}</span>
-                  </div>
-                ))}
+                {items.map(it => <ItemLine key={it.id} it={it} barber={barbers.find(b => b.id === sale.barber_id)} />)}
                 {Number(sale.tip) > 0 && (
                   <div className="flex justify-between text-sm border-t border-dark-400 pt-1 mt-1">
                     <span className="text-cream/60">Propina</span>
@@ -629,7 +678,7 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, 
                 <label className="label mb-0">Servicios</label>
                 {totalServices > 0 && <span className="text-gold text-sm font-semibold">${totalServices.toLocaleString('es-AR')}</span>}
               </div>
-              <EditItemPicker items={catalog.services} selected={selServices} onToggle={(it, d) => toggleItem(setSelServices, it, d)} />
+              <EditItemPicker items={catalog.services} selected={selServices} onToggle={(it, d) => toggleItem(setSelServices, it, d)} commissionOf={sCommissionOf} />
             </div>
           )}
 
@@ -665,6 +714,19 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, 
               </select>
             </div>
 
+            {/* Propina */}
+            <div>
+              <label className="label">
+                Propina <span className="text-cream/30 font-normal normal-case tracking-normal">
+                  (100% para {selectedBarber ? 'el barbero' : 'el local'})
+                </span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-cream/40 text-sm">$</span>
+                <input type="number" min="0" className="input-dark" value={editTip} onChange={e => setEditTip(e.target.value)} placeholder="0" />
+              </div>
+            </div>
+
             {/* Método de pago */}
             <div>
               <label className="label">Método de pago</label>
@@ -674,25 +736,30 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, 
               </select>
             </div>
 
-            {/* Propina */}
-            <div>
-              <label className="label">Propina</label>
-              <div className="flex items-center gap-2">
-                <span className="text-cream/40 text-sm">$</span>
-                <input type="number" min="0" className="input-dark" value={editTip} onChange={e => setEditTip(e.target.value)} placeholder="0" />
-              </div>
-            </div>
-
-            {/* Preview ganancias */}
+            {/* Preview ganancias — servicio por servicio */}
             {grandTotal > 0 && selectedBarber && (
-              <div className="flex gap-2 text-xs">
-                <div className="flex-1 bg-dark-300/60 rounded-lg px-3 py-2">
-                  <p className="text-cream/40 mb-0.5">Para {selectedBarber.name}</p>
-                  <p className="text-gold font-semibold">${barberEarningsPreview.toLocaleString('es-AR')}</p>
-                </div>
-                <div className="flex-1 bg-dark-300/60 rounded-lg px-3 py-2">
-                  <p className="text-cream/40 mb-0.5">Para el local</p>
-                  <p className="text-cream font-semibold">${(grandTotal - barberEarningsPreview).toLocaleString('es-AR')}</p>
+              <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1 bg-dark-300/40 rounded-lg px-3 py-2">
+                    <p className="text-cream/35 text-[10px] uppercase tracking-wide font-bold mb-0.5">Comisión por servicio</p>
+                    {sSplit.lines.map(l => (
+                      <div key={l.service.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-cream/50 truncate">{l.service.name}{l.qty > 1 ? ` ×${l.qty}` : ''}</span>
+                        <span className="flex items-center gap-1.5 shrink-0">
+                          <span className={l.custom ? 'text-violet-300 font-semibold' : 'text-cream/35'}>{l.pct}%</span>
+                          <span className="text-gold/80">${l.forBarber.toLocaleString('es-AR')}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                <div className="flex gap-2 text-xs">
+                  <div className="flex-1 bg-dark-300/60 rounded-lg px-3 py-2">
+                    <p className="text-cream/40 mb-0.5">Para {selectedBarber.name}</p>
+                    <p className="text-gold font-semibold">${barberEarningsPreview.toLocaleString('es-AR')}</p>
+                  </div>
+                  <div className="flex-1 bg-dark-300/60 rounded-lg px-3 py-2">
+                    <p className="text-cream/40 mb-0.5">Para el local</p>
+                    <p className="text-cream font-semibold">${(grandTotal - barberEarningsPreview).toLocaleString('es-AR')}</p>
+                  </div>
                 </div>
               </div>
             )}
@@ -735,7 +802,7 @@ function SaleRow({ sale, barbers, paymentMethods, isAdmin, onRefresh, showDate, 
 }
 
 // ── Card de un barbero — columna principal, solo ventas oficiales ────────────
-function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods, isAdmin, isSingle, onRefresh }) {
+function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods, barberSvcs, isAdmin, isSingle, onRefresh }) {
   const officialTotal = sales.reduce((s, r) => s + Number(r.total) + Number(r.surcharge_amt || 0), 0)
   const match         = draftTotal > 0 && officialTotal > 0 && draftTotal === officialTotal
 
@@ -772,7 +839,7 @@ function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods
         ? <p className="text-cream/25 text-sm text-center py-3">Sin ventas oficiales este día</p>
         : <div className="flex flex-col gap-2">
             {sales.map(s => (
-              <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} />
+              <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} />
             ))}
           </div>
       }
@@ -781,7 +848,7 @@ function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods
 }
 
 // ── Card de comparación — las dos listas, una al lado de la otra ─────────────
-function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods, isAdmin, isSingle, onRefresh, addSaleLink }) {
+function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods, barberSvcs, isAdmin, isSingle, onRefresh, addSaleLink }) {
   const officialTotal = sales.reduce((s, r) => s + rowTotal(r), 0)
   const draftTotal    = drafts.reduce((s, r) => s + rowTotal(r), 0)
 
@@ -813,7 +880,7 @@ function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods
           {sales.length === 0
             ? <p className="text-cream/25 text-xs text-center py-3">Sin ventas</p>
             : sales.map(s => (
-                <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} compact />
+                <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} compact />
               ))
           }
         </div>
@@ -821,7 +888,7 @@ function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods
           {drafts.length === 0
             ? <p className="text-cream/25 text-xs text-center py-3">Sin registros</p>
             : drafts.map(d => (
-                <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} onChange={onRefresh} onDelete={onRefresh} showDate={!isSingle} isAdmin={isAdmin} compact />
+                <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} onChange={onRefresh} onDelete={onRefresh} showDate={!isSingle} isAdmin={isAdmin} compact />
               ))
           }
         </div>
@@ -849,6 +916,7 @@ export default function DraftsPage() {
   const [sales, setSales] = useState([])
   const [barbers, setBarbers] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
+  const [barberSvcs, setBarberSvcs] = useState({})
   const [loading, setLoading] = useState(true)
   const [showDrafts, setShowDrafts] = useState(false)
 
@@ -857,9 +925,11 @@ export default function DraftsPage() {
     Promise.all([
       supabase.from('barbers').select('*').eq('tenant_id', tenant.id),
       supabase.from('payment_methods').select('*').eq('tenant_id', tenant.id),
-    ]).then(([b, pm]) => {
+      supabase.from('barber_services').select('*').eq('tenant_id', tenant.id),
+    ]).then(([b, pm, bs]) => {
       setBarbers(b.data || [])
       setPaymentMethods(pm.data || [])
+      setBarberSvcs(overridesByBarber(bs.data || []))
     })
   }, [tenant?.id])
 
@@ -903,6 +973,7 @@ export default function DraftsPage() {
           drafts={drafts.filter(d => d.barber_id === barber.id)}
           barbers={barbers}
           paymentMethods={paymentMethods}
+          barberSvcs={barberSvcs}
           isAdmin={isAdmin}
           isSingle={isSingle}
           onRefresh={load}
@@ -923,6 +994,7 @@ export default function DraftsPage() {
           drafts={orphanDrafts}
           barbers={barbers}
           paymentMethods={paymentMethods}
+          barberSvcs={barberSvcs}
           isAdmin={isAdmin}
           isSingle={isSingle}
           onRefresh={load}
@@ -976,6 +1048,7 @@ export default function DraftsPage() {
                     draftTotal={drafts.filter(d => d.barber_id === barber.id).reduce((s, d) => s + Number(d.total) + Number(d.surcharge_amt || 0), 0)}
                     barbers={barbers}
                     paymentMethods={paymentMethods}
+                    barberSvcs={barberSvcs}
                     isAdmin={isAdmin}
                     isSingle={isSingle}
                     onRefresh={load}
@@ -995,7 +1068,7 @@ export default function DraftsPage() {
                     </div>
                     <div className="flex flex-col gap-2">
                       {shopOnlySales.map(s => (
-                        <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} isAdmin={isAdmin} onRefresh={load} showDate={!isSingle} />
+                        <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} isAdmin={isAdmin} onRefresh={load} showDate={!isSingle} />
                       ))}
                     </div>
                   </div>

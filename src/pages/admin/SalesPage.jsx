@@ -3,9 +3,11 @@ import { format } from 'date-fns'
 import { Check, Plus, Minus, Store, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import CommissionBadge from '../../components/ui/CommissionBadge'
+import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesByBarber } from '../../lib/earnings'
 import toast from 'react-hot-toast'
 
-function ItemPicker({ items, selected, onToggle }) {
+function ItemPicker({ items, selected, onToggle, commissionOf }) {
   if (items.length === 0) return (
     <p className="text-cream/30 text-xs text-center py-2">Sin ítems configurados</p>
   )
@@ -30,9 +32,12 @@ function ItemPicker({ items, selected, onToggle }) {
             >
               <Minus size={12} />
             </button>
-            <button onClick={() => onToggle(item, 1)} className="flex-1 text-left">
+            <button onClick={() => onToggle(item, 1)} className="flex-1 text-left min-w-0">
               <span className={`text-sm font-medium ${isSelected ? 'text-cream' : 'text-cream/70'}`}>{item.name}</span>
               {qty > 1 && <span className="text-gold text-xs ml-2">×{qty}</span>}
+              {commissionOf?.(item) && (
+                <span className="ml-2 align-middle inline-block"><CommissionBadge {...commissionOf(item)} /></span>
+              )}
             </button>
             <span className={`text-sm shrink-0 ${isSelected ? 'text-gold' : 'text-cream/40'}`}>
               ${Number(item.price).toLocaleString('es-AR')}
@@ -68,8 +73,10 @@ export default function SalesPage() {
   const [products, setProducts] = useState([])
   const [drinks, setDrinks] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
+  const [barberSvcs, setBarberSvcs] = useState({})
 
   const [selectedBarber, setSelectedBarber] = useState('')
+  const [shopOnly, setShopOnly] = useState(false)
   const [selServices, setSelServices] = useState({})
   const [selProducts, setSelProducts] = useState({})
   const [selDrinks, setSelDrinks] = useState({})
@@ -88,14 +95,27 @@ export default function SalesPage() {
       supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('drinks').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('payment_methods').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order'),
-    ]).then(([b, s, p, d, pm]) => {
+      supabase.from('barber_services').select('*').eq('tenant_id', tenant.id),
+    ]).then(([b, s, p, d, pm, bs]) => {
       setBarbers(b.data || [])
       setServices(s.data || [])
       setProducts(p.data || [])
       setDrinks(d.data || [])
       setPaymentMethods(pm.data || [])
+      setBarberSvcs(overridesByBarber(bs.data || []))
     })
   }, [tenant?.id])
+
+  // Elegir barbero (o "solo local"): descarta los servicios que ese barbero no hace
+  function chooseBarber(barberId) {
+    const next = barbers.find(b => b.id === barberId) || null
+    setSelectedBarber(next?.id || '')
+    setShopOnly(!next)
+    const allowed = next ? enabledServices(services, barberSvcs[next.id]) : services
+    setSelServices(prev => Object.fromEntries(
+      Object.entries(prev).filter(([id]) => allowed.some(s => s.id === id))
+    ))
+  }
 
   function toggle(setter, item, delta) {
     setter(prev => {
@@ -115,6 +135,12 @@ export default function SalesPage() {
 
   const hasServices  = Object.keys(selServices).length > 0
   const hasShopItems = Object.keys(selProducts).length > 0 || Object.keys(selDrinks).length > 0
+  const barber       = barbers.find(b => b.id === selectedBarber) || null
+  const overrides    = barber ? barberSvcs[barber.id] : null
+  const chosen       = !!barber || shopOnly
+  // Al barbero solo le aparecen los servicios que tiene habilitados
+  const visibleServices = barber ? enabledServices(services, overrides) : services
+  const split        = splitServices(selServices, services, barber, overrides)
   const totalServices = calcTotal(selServices, services)
   const totalProducts = calcTotal(selProducts, products)
   const totalDrinks   = calcTotal(selDrinks, drinks)
@@ -138,14 +164,13 @@ export default function SalesPage() {
     setLoading(true)
 
     try {
-      const barber = barbers.find(b => b.id === selectedBarber)
-      const barberEarnings = barber ? totalServices * (barber.commission_pct / 100) + tipAmt : 0
-      const shopEarnings   = barber
-        ? totalServices * (1 - barber.commission_pct / 100) + totalProducts + totalDrinks + surchargeAmt
-        : totalServices + totalProducts + totalDrinks + surchargeAmt
+      // El reparto se calcula servicio por servicio: cada uno puede tener su propio %
+      const barberEarnings = barber ? split.barberAmt + tipAmt : 0
+      // Sin barbero, la propina queda para el local
+      const shopEarnings   = split.shopAmt + totalProducts + totalDrinks + surchargeAmt + (barber ? 0 : tipAmt)
 
       const items = [
-        ...buildItems(selServices, services, 'service'),
+        ...buildServiceItems(selServices, services, barber, overrides),
         ...buildItems(selProducts, products, 'product'),
         ...buildItems(selDrinks, drinks, 'drink'),
       ]
@@ -170,7 +195,7 @@ export default function SalesPage() {
       setSaved(true)
       setTimeout(() => {
         setSelServices({}); setSelProducts({}); setSelDrinks({})
-        setPaymentMethod(''); setTip(''); setSelectedBarber('')
+        setPaymentMethod(''); setTip(''); setSelectedBarber(''); setShopOnly(false)
         setSaved(false)
       }, 1200)
     } catch (e) {
@@ -197,7 +222,43 @@ export default function SalesPage() {
       <h1 className="section-title mb-1">Nueva venta</h1>
       <p className="section-sub mb-5">Registro oficial de venta</p>
 
-      {/* ── Servicios (van con barbero) ── */}
+      {/* ── 1. Quién atiende — define qué servicios se ven y con qué % ── */}
+      <div className="card mb-3">
+        <label className="label">¿Quién lo atendió?</label>
+        <div className="flex flex-wrap gap-2 mt-1">
+          {barbers.map(b => (
+            <button
+              key={b.id}
+              onClick={() => chooseBarber(b.id)}
+              className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                selectedBarber === b.id
+                  ? 'border-gold bg-gold/15 text-gold'
+                  : 'border-dark-400 text-cream/60 hover:border-dark-500'
+              }`}
+            >
+              {b.name}
+              {selectedBarber === b.id && (
+                <span className="ml-2 text-gold/60 text-xs">{b.commission_pct}% gral.</span>
+              )}
+            </button>
+          ))}
+          <button
+            onClick={() => chooseBarber(null)}
+            className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+              shopOnly
+                ? 'border-emerald-400/60 bg-emerald-400/12 text-emerald-400'
+                : 'border-dark-400 text-cream/60 hover:border-dark-500'
+            }`}
+          >
+            Solo local
+          </button>
+        </div>
+        {shopOnly && (
+          <p className="text-cream/35 text-xs mt-2">Venta sin barbero: todo lo que cargues va 100% al local.</p>
+        )}
+      </div>
+
+      {/* ── 2. Servicios ── */}
       <div className="card mb-3">
         {/* Header de sección */}
         <div className="flex items-center justify-between mb-3">
@@ -205,75 +266,55 @@ export default function SalesPage() {
           {totalServices > 0 && <span className="text-gold text-sm">${totalServices.toLocaleString('es-AR')}</span>}
         </div>
 
-        <ItemPicker items={services} selected={selServices} onToggle={(item, d) => toggle(setSelServices, item, d)} />
+        {!chosen ? (
+          <p className="text-cream/30 text-sm text-center py-4">Elegí primero quién atendió</p>
+        ) : (
+          <ItemPicker
+            items={visibleServices}
+            selected={selServices}
+            onToggle={(item, d) => toggle(setSelServices, item, d)}
+            // El % que le corresponde al barbero por cada servicio
+            commissionOf={s => barber
+              ? { pct: servicePct(s, barber, overrides), isDefault: !hasCustomPct(s, overrides), barberName: barber.name.split(' ')[0] }
+              : null}
+          />
+        )}
 
-        {/* Barbero + propina — solo si hay servicios seleccionados */}
-        {hasServices && (
-          <div className="mt-4 pt-4 border-t border-dark-300 flex flex-col gap-3">
-            <div>
-              <label className="label">Barbero que realizó los servicios</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {barbers.map(b => (
-                  <button
-                    key={b.id}
-                    onClick={() => {
-                      if (selectedBarber === b.id) {
-                        setSelectedBarber('')
-                        setTip('')
-                      } else {
-                        setSelectedBarber(b.id)
-                      }
-                    }}
-                    className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                      selectedBarber === b.id
-                        ? 'border-gold bg-gold/15 text-gold'
-                        : 'border-dark-400 text-cream/60 hover:border-dark-500'
-                    }`}
-                  >
-                    {b.name}
-                    {selectedBarber === b.id && (
-                      <span className="ml-2 text-gold/60 text-xs">{b.commission_pct}%</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {selectedBarber && (
-              <div>
-                <label className="label">Propina <span className="text-cream/30 font-normal">(opcional · 100% para el barbero)</span></label>
-                <div className="flex items-center gap-2">
-                  <span className="text-cream/40 text-sm">$</span>
-                  <input
-                    type="number" min="0"
-                    className="input-dark"
-                    placeholder="0"
-                    value={tip}
-                    onChange={e => setTip(e.target.value)}
-                  />
+        {barber && hasServices && (
+          <div className="mt-4 pt-4 border-t border-dark-300">
+            {/* Desglose de ganancias — servicio por servicio */}
+            <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1 bg-dark-300/50 rounded-lg px-3 py-2">
+                  {split.lines.map(l => (
+                    <div key={l.service.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-cream/50 truncate">{l.service.name}{l.qty > 1 ? ` ×${l.qty}` : ''}</span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <span className={l.custom ? 'text-violet-300 font-semibold' : 'text-cream/35'}>{l.pct}%</span>
+                        <span className="text-gold/80">${l.forBarber.toLocaleString('es-AR')}</span>
+                      </span>
+                    </div>
+                  ))}
+                  {tipAmt > 0 && (
+                    <div className="flex items-center justify-between gap-2 text-xs border-t border-dark-400/40 pt-1 mt-0.5">
+                      <span className="text-cream/50">Propina</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-cream/35">100%</span>
+                        <span className="text-gold/80">${tipAmt.toLocaleString('es-AR')}</span>
+                      </span>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-
-            {/* Desglose de ganancias */}
-            {selectedBarber && (() => {
-              const barber = barbers.find(b => b.id === selectedBarber)
-              if (!barber) return null
-              const barberAmt = totalServices * (barber.commission_pct / 100) + tipAmt
-              const shopAmt   = totalServices * (1 - barber.commission_pct / 100)
-              return (
                 <div className="flex gap-3 text-xs">
                   <div className="flex-1 bg-dark-300 rounded-lg px-3 py-2">
                     <p className="text-cream/40 mb-0.5">Para {barber.name}</p>
-                    <p className="text-gold font-medium">${barberAmt.toLocaleString('es-AR')}</p>
+                    <p className="text-gold font-medium">${(split.barberAmt + tipAmt).toLocaleString('es-AR')}</p>
                   </div>
-                  <div className="flex-1 bg-dark-300 rounded-lg px-3 py-2">
-                    <p className="text-cream/40 mb-0.5">Para el local</p>
-                    <p className="text-cream font-medium">${shopAmt.toLocaleString('es-AR')}</p>
-                  </div>
+                <div className="flex-1 bg-dark-300 rounded-lg px-3 py-2">
+                  <p className="text-cream/40 mb-0.5">Para el local</p>
+                  <p className="text-cream font-medium">${split.shopAmt.toLocaleString('es-AR')}</p>
                 </div>
-              )
-            })()}
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -315,6 +356,27 @@ export default function SalesPage() {
           </div>
         )}
       </div>
+
+      {/* ── Propina — antes del método de pago ── */}
+      {chosen && (
+        <div className="card mb-3">
+          <label className="label">
+            Propina <span className="text-cream/30 font-normal normal-case tracking-normal">
+              (opcional · 100% para {barber ? 'el barbero' : 'el local'})
+            </span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-cream/40 text-sm">$</span>
+            <input
+              type="number" min="0"
+              className="input-dark"
+              placeholder="0"
+              value={tip}
+              onChange={e => setTip(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Método de pago */}
       <div className="card mb-4">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Moon, Share2, Download, Scissors, ShoppingBag, Droplets, ArrowRightLeft, Banknote, Minus, Equal } from 'lucide-react'
+import { Moon, Share2, Download, Scissors, ShoppingBag, Droplets, ArrowRightLeft, Banknote, Minus, Equal, Percent, Coins } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { format } from 'date-fns'
@@ -7,6 +7,7 @@ import { es } from 'date-fns/locale'
 import EmptyState from '../../components/ui/EmptyState'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
 import Modal from '../../components/ui/Modal'
+import { groupByPct } from '../../lib/earnings'
 import toast from 'react-hot-toast'
 
 function fmt(n) { return Number(n || 0).toLocaleString('es-AR') }
@@ -63,6 +64,52 @@ function ExcludedRow({ icon: Icon, label, amount }) {
         </div>
       </div>
       <span className="text-red-400/60 text-sm shrink-0">-${fmt(amount)}</span>
+    </div>
+  )
+}
+
+// Comisión de servicios — una línea por cada % con el que se pagó
+function CommissionRows({ rates, commission, svcs, barber }) {
+  if (rates.length > 1) {
+    return (
+      <>
+        {rates.map(r => (
+          <div key={r.pct} className="flex items-center justify-between px-4 py-2 border-b border-dark-400/15">
+            <div className="flex items-center gap-2 min-w-0">
+              <Percent size={11} className="text-violet-300/70 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-cream/60 text-xs">Servicios al {r.pct}%</p>
+                <p className="text-cream/25 text-[11px]">Sobre ${fmt(r.amount)}</p>
+              </div>
+            </div>
+            <span className="text-cream/70 text-sm shrink-0">${fmt(r.barberAmt)}</span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-dark-400/30 bg-dark-400/25">
+          <div className="flex items-center gap-2 min-w-0">
+            <Equal size={12} className="text-cream/45 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-cream font-medium text-xs">Comisión total</p>
+              <p className="text-cream/30 text-[11px]">Sobre ${fmt(svcs)} en servicios</p>
+            </div>
+          </div>
+          <span className="text-cream font-semibold text-sm shrink-0">${fmt(commission)}</span>
+        </div>
+      </>
+    )
+  }
+
+  const pct = rates[0]?.pct ?? Number(barber.commission_pct)
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-dark-400/30 bg-dark-400/25">
+      <div className="flex items-center gap-2 min-w-0">
+        <Equal size={12} className="text-cream/45 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-cream font-medium text-xs">Comisión ({pct}%)</p>
+          <p className="text-cream/30 text-[11px]">Sobre ${fmt(svcs)} en servicios</p>
+        </div>
+      </div>
+      <span className="text-cream font-semibold text-sm shrink-0">${fmt(commission)}</span>
     </div>
   )
 }
@@ -132,8 +179,10 @@ export default function DayClosingPage() {
   const totalSurcharge = sales.reduce((sum, s) => sum + Number(s.surcharge_amt || 0), 0)
   const totalShop      = sales.reduce((sum, s) => sum + Number(s.shop_earnings || 0), 0)
   const totalServicesAll = sales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
+  // Propinas de ventas sin barbero: quedan para el local
+  const shopTips = sales.filter(s => !s.barber_id).reduce((sum, s) => sum + Number(s.tip || 0), 0)
   // Lo que retiene el local de los servicios: su % de comisión + servicios de ventas sin barbero (100% local)
-  const shopFromServices = totalShop - totalProducts - totalDrinks - totalSurcharge
+  const shopFromServices = totalShop - totalProducts - totalDrinks - totalSurcharge - shopTips
   // Lo que efectivamente se les pagó a los barberos por comisión de servicios (sin contar propinas)
   const totalBarberServiceCommission = totalServicesAll - shopFromServices
 
@@ -157,7 +206,10 @@ export default function DayClosingPage() {
     const tips      = bSales.reduce((sum, s) => sum + Number(s.tip || 0), 0)
     const earnings  = bSales.reduce((sum, s) => sum + Number(s.barber_earnings || 0), 0)
     const surcharge = bSales.reduce((sum, s) => sum + Number(s.surcharge_amt || 0), 0)
-    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, sales: bSales }
+    // Desglose por % aplicado; la comisión sale de lo guardado, no se recalcula
+    const rates      = groupByPct(bSales.flatMap(s => s.sale_items || []), b)
+    const commission = earnings - tips
+    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, rates, commission, sales: bSales }
   }).filter(Boolean)
 
   // ── Ventas sin barbero ──
@@ -186,9 +238,14 @@ export default function DayClosingPage() {
 
     if (byBarber.length) {
       lines.push(``, `👤 A PAGAR:`)
-      byBarber.forEach(({ barber, count, svcs, tips, earnings }) => {
-        lines.push(``, `${barber.name} (${barber.commission_pct}% comisión)`)
+      byBarber.forEach(({ barber, count, svcs, tips, earnings, rates, commission }) => {
+        const rateLabel = rates.length > 1
+          ? `comisión mixta: ${rates.map(r => `${r.pct}%`).join(' / ')}`
+          : `${rates[0]?.pct ?? barber.commission_pct}% comisión`
+        lines.push(``, `${barber.name} (${rateLabel})`)
         lines.push(`   Servicios (${count}): $${fmt(svcs)}`)
+        if (rates.length > 1) rates.forEach(r => lines.push(`      ${r.pct}% sobre $${fmt(r.amount)} → $${fmt(r.barberAmt)}`))
+        lines.push(`   Comisión:         $${fmt(commission)}`)
         if (tips > 0) lines.push(`   Propinas:         $${fmt(tips)}`)
         lines.push(`   → COBRAR:          $${fmt(earnings)}`)
       })
@@ -197,6 +254,7 @@ export default function DayClosingPage() {
     lines.push(
       ``, `🏪 LOCAL: $${fmt(totalShop)}`,
       shopFromServices > 0 ? `   Servicios (comisión${noBarberSales.length ? ' + sin barbero' : ''}): $${fmt(shopFromServices)}` : null,
+      shopTips > 0 ? `   Propinas sin barbero: $${fmt(shopTips)}` : null,
       totalProducts > 0 ? `   Vitrina:            $${fmt(totalProducts)}` : null,
       totalDrinks   > 0 ? `   Bebidas:            $${fmt(totalDrinks)}` : null,
       totalSurcharge > 0 ? `   Recargo pagos:      $${fmt(totalSurcharge)}` : null,
@@ -299,7 +357,7 @@ export default function DayClosingPage() {
             <div>
               <SectionLabel>A pagarle a cada barbero</SectionLabel>
               <div className="flex flex-col gap-3">
-                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, sales: bSales }) => (
+                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, rates, commission, sales: bSales }) => (
                   <div key={barber.id} className="card">
                     {/* Encabezado */}
                     <div className="flex items-center gap-3 mb-4">
@@ -310,7 +368,9 @@ export default function DayClosingPage() {
                         <p className="font-semibold text-cream text-sm">{barber.name}</p>
                         <p className="text-cream/35 text-xs">
                           <CountButton count={count} onClick={() => setDetail({ title: barber.name, sales: bSales, showBarber: false })} />
-                          {' '}· {barber.commission_pct}% comisión
+                          {' '}· {rates.length > 1
+                            ? <span className="text-violet-300/80">comisión mixta ({rates.map(r => `${r.pct}%`).join(' / ')})</span>
+                            : `${rates[0]?.pct ?? barber.commission_pct}% comisión`}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
@@ -321,7 +381,7 @@ export default function DayClosingPage() {
 
                     {/* Por qué le pagás eso */}
                     <div className="bg-dark-300/40 rounded-xl overflow-hidden">
-                      {(surcharge > 0 || products > 0 || drinks > 0) ? (
+                      {(surcharge > 0 || products > 0 || drinks > 0) && (
                         <>
                           {/* Pasos intermedios: de acá sale la base de la comisión, no suman aparte */}
                           <div className="flex items-center justify-between px-4 py-2 border-b border-dark-400/15">
@@ -334,28 +394,10 @@ export default function DayClosingPage() {
                           {products > 0 && <ExcludedRow icon={ShoppingBag} label="Vitrina vendida" amount={products} />}
                           {drinks   > 0 && <ExcludedRow icon={Droplets} label="Bebidas vendidas" amount={drinks} />}
                           {surcharge > 0 && <ExcludedRow icon={ArrowRightLeft} label="Recargo método de pago" amount={surcharge} />}
-
-                          {/* Resultado: esto es lo que efectivamente suma al total */}
-                          <div className="flex items-center justify-between px-4 py-3 border-b border-dark-400/30 bg-dark-400/25">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Equal size={12} className="text-cream/45 shrink-0" />
-                              <div className="min-w-0">
-                                <p className="text-cream font-medium text-xs">Comisión ({barber.commission_pct}%)</p>
-                                <p className="text-cream/30 text-[11px]">Sobre ${fmt(svcs)} en servicios</p>
-                              </div>
-                            </div>
-                            <span className="text-cream font-semibold text-sm shrink-0">${fmt(svcs * barber.commission_pct / 100)}</span>
-                          </div>
                         </>
-                      ) : (
-                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-400/30">
-                          <div className="flex items-center gap-2">
-                            <Scissors size={12} className="text-cream/30" />
-                            <span className="text-cream/55 text-xs">Servicios × {barber.commission_pct}% comisión</span>
-                          </div>
-                          <span className="text-cream/70 text-sm font-medium">${fmt(svcs * barber.commission_pct / 100)}</span>
-                        </div>
                       )}
+
+                      <CommissionRows rates={rates} commission={commission} svcs={svcs} barber={barber} />
                       {tips > 0 && (
                         <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-400/30">
                           <div className="flex items-center gap-2">
@@ -425,6 +467,9 @@ export default function DayClosingPage() {
                       amount={shopFromServices}
                     />
                   )
+                )}
+                {shopTips > 0 && (
+                  <MoneyRow icon={Coins} label="Propinas sin barbero" sub="Quedan para el local" amount={shopTips} />
                 )}
                 {totalProducts > 0 && (
                   <MoneyRow icon={ShoppingBag} label="Vitrina" sub="100% local" amount={totalProducts} />

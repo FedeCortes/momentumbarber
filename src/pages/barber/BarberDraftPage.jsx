@@ -5,9 +5,11 @@ import { useAuth } from '../../context/AuthContext'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import CommissionBadge from '../../components/ui/CommissionBadge'
+import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesMap } from '../../lib/earnings'
 import toast from 'react-hot-toast'
 
-function ItemPicker({ items, selected, onToggle }) {
+function ItemPicker({ items, selected, onToggle, commissionOf }) {
   if (items.length === 0) return (
     <p className="text-cream/30 text-xs text-center py-3">Sin ítems disponibles</p>
   )
@@ -38,6 +40,9 @@ function ItemPicker({ items, selected, onToggle }) {
                 {item.name}
                 {qty > 1 && <span className="ml-1.5 text-gold text-xs font-semibold">×{qty}</span>}
               </p>
+              {commissionOf?.(item) && (
+                <span className="inline-block mt-1"><CommissionBadge {...commissionOf(item)} variant="barber" /></span>
+              )}
             </button>
 
             <span className={`text-sm font-semibold shrink-0 ${on ? 'text-gold' : 'text-cream/30'}`}>
@@ -123,6 +128,7 @@ export default function BarberDraftPage() {
   const [products, setProducts]         = useState([])
   const [drinks, setDrinks]             = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
+  const [overrides, setOverrides]       = useState({})
   const [catalogReady, setCatalogReady] = useState(false)
 
   const [selServices, setSelServices]   = useState({})
@@ -145,14 +151,20 @@ export default function BarberDraftPage() {
       supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('drinks').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
       supabase.from('payment_methods').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order'),
-    ]).then(([s, p, d, pm]) => {
-      setServices(s.data || [])
+      barber?.id
+        ? supabase.from('barber_services').select('*').eq('barber_id', barber.id)
+        : Promise.resolve({ data: [] }),
+    ]).then(([s, p, d, pm, bs]) => {
+      const ov = overridesMap(bs.data || [])
+      setOverrides(ov)
+      // Solo se muestran los servicios habilitados para este barbero
+      setServices(enabledServices(s.data || [], ov))
       setProducts(p.data || [])
       setDrinks(d.data || [])
       setPaymentMethods(pm.data || [])
       setCatalogReady(true)
     })
-  }, [tenant?.id])
+  }, [tenant?.id, barber?.id])
 
   // Cargar borrador para editar
   useEffect(() => {
@@ -208,6 +220,8 @@ export default function BarberDraftPage() {
   const totalProducts = calcTotal(selProducts, products)
   const totalDrinks   = calcTotal(selDrinks, drinks)
   const tipAmt        = Number(tip) || 0
+  const mySplit       = splitServices(selServices, services, barber, overrides)
+  const myEarnings    = mySplit.barberAmt + tipAmt
   const baseTotal     = totalServices + totalProducts + totalDrinks
   const selectedPm    = paymentMethods.find(p => p.id === paymentMethod)
   const surchargePct  = Number(selectedPm?.surcharge_pct) || 0
@@ -216,10 +230,8 @@ export default function BarberDraftPage() {
 
   function buildItems() {
     return [
-      ...Object.entries(selServices).map(([id, qty]) => {
-        const item = services.find(s => s.id === id)
-        return { item_type: 'service', item_id: id, name: item.name, price: item.price, quantity: qty }
-      }),
+      // Guarda el % que le corresponde al barbero por cada servicio
+      ...buildServiceItems(selServices, services, barber, overrides),
       ...Object.entries(selProducts).map(([id, qty]) => {
         const item = products.find(p => p.id === id)
         return { item_type: 'product', item_id: id, name: item.name, price: item.price, quantity: qty }
@@ -338,7 +350,15 @@ export default function BarberDraftPage() {
               <span className="text-gold text-sm font-bold">${totalServices.toLocaleString('es-AR')}</span>
             )}
           </div>
-          <ItemPicker items={services} selected={selServices} onToggle={(item, d) => toggle(setSelServices, item, d)} />
+          <p className="text-cream/35 text-[11px] mb-2 leading-snug">
+            Tu comisión general es {Number(barber?.commission_pct)}%. Los servicios en violeta te pagan otro porcentaje.
+          </p>
+          <ItemPicker
+            items={services}
+            selected={selServices}
+            onToggle={(item, d) => toggle(setSelServices, item, d)}
+            commissionOf={s => ({ pct: servicePct(s, barber, overrides), isDefault: !hasCustomPct(s, overrides) })}
+          />
         </div>
       )}
 
@@ -388,10 +408,29 @@ export default function BarberDraftPage() {
         </div>
       )}
 
-      {/* Método de pago + Propina en fila */}
+      {/* Propina — antes del método de pago, igual que en la carga del admin */}
+      <div className="card !p-3 mb-2">
+        <label className="label mb-1.5">
+          Propina <span className="text-gold/50 font-medium normal-case tracking-normal">— 100% para vos</span>
+        </label>
+        <div className="flex items-center gap-2">
+          <span className="text-cream/40 text-base font-semibold">$</span>
+          <input
+            type="number"
+            min="0"
+            inputMode="numeric"
+            className="input-dark !py-2"
+            placeholder="0"
+            value={tip}
+            onChange={e => setTip(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Método de pago */}
       <div className="card !p-3 mb-2">
         <label className="label mb-2">Método de pago</label>
-        <div className="flex flex-wrap gap-1.5 mb-3">
+        <div className="flex flex-wrap gap-1.5">
           {paymentMethods.map(pm => (
             <button
               key={pm.id}
@@ -410,21 +449,6 @@ export default function BarberDraftPage() {
               )}
             </button>
           ))}
-        </div>
-        <label className="label mb-1.5">
-          Propina <span className="text-gold/50 font-medium normal-case tracking-normal">— 100% para vos</span>
-        </label>
-        <div className="flex items-center gap-2">
-          <span className="text-cream/40 text-base font-semibold">$</span>
-          <input
-            type="number"
-            min="0"
-            inputMode="numeric"
-            className="input-dark !py-2"
-            placeholder="0"
-            value={tip}
-            onChange={e => setTip(e.target.value)}
-          />
         </div>
       </div>
 
@@ -461,6 +485,12 @@ export default function BarberDraftPage() {
             </span>
             <span className="font-display text-3xl text-gold">${grandTotal.toLocaleString('es-AR')}</span>
           </div>
+          {myEarnings > 0 && (
+            <div className="flex items-center justify-between mb-2 -mt-1">
+              <span className="text-cream/35 text-[11px]">Para vos</span>
+              <span className="text-gold/70 text-xs font-semibold">${myEarnings.toLocaleString('es-AR')}</span>
+            </div>
+          )}
           <button
             onClick={handleSubmit}
             disabled={loading}

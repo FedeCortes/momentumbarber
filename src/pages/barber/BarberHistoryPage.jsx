@@ -1,20 +1,41 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, ClipboardList, CheckCircle2, AlertTriangle, Pencil, Trash2 } from 'lucide-react'
+import { ChevronDown, ClipboardList, Pencil, Trash2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import EmptyState from '../../components/ui/EmptyState'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
+import CommissionBadge from '../../components/ui/CommissionBadge'
+import { groupByPct } from '../../lib/earnings'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 
-function DraftRow({ draft, paymentMethods, showDate, onDelete }) {
+// Línea de ítem — muestra con qué % se paga cada servicio
+function ItemLine({ it, barberPct }) {
+  const pct  = it.commission_pct != null ? Number(it.commission_pct) : null
+  const show = it.item_type === 'service' && pct != null
+  return (
+    <div className="flex justify-between items-center gap-2">
+      <span className="text-cream/60 text-sm min-w-0">
+        {it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
+        {show && (
+          <span className="ml-1.5 align-middle inline-block">
+            <CommissionBadge pct={pct} variant="barber" size="xs" isDefault={pct === Number(barberPct)} />
+          </span>
+        )}
+      </span>
+      <span className="text-cream/40 text-sm shrink-0">${Number(it.subtotal).toLocaleString('es-AR')}</span>
+    </div>
+  )
+}
+
+function DraftRow({ draft, paymentMethods, showDate, onDelete, barber, earnings }) {
   const navigate = useNavigate()
-  const [open, setOpen]               = useState(false)
-  const [items, setItems]             = useState(null)
-  const [confirmDelete, setConfirm]   = useState(false)
-  const [deleting, setDeleting]       = useState(false)
+  const [open, setOpen]             = useState(false)
+  const [items, setItems]           = useState(draft.draft_items || null)
+  const [confirmDelete, setConfirm] = useState(false)
+  const [deleting, setDeleting]     = useState(false)
 
   const pm = paymentMethods.find(p => p.id === draft.payment_method_id)
 
@@ -65,8 +86,10 @@ function DraftRow({ draft, paymentMethods, showDate, onDelete }) {
             )}
             <span className="text-cream/30 text-xs">{pm?.name || '—'}</span>
             <span className="text-cream/30 text-xs">{format(new Date(draft.created_at), 'HH:mm')}</span>
-            {Number(draft.tip) > 0 && (
-              <span className="text-gold/45 text-xs">+${Number(draft.tip).toLocaleString('es-AR')} propina</span>
+            {earnings > 0 && (
+              <span className="text-gold/65 text-xs font-semibold">
+                Para vos: ${earnings.toLocaleString('es-AR')}
+              </span>
             )}
           </div>
         </div>
@@ -103,98 +126,17 @@ function DraftRow({ draft, paymentMethods, showDate, onDelete }) {
         <div className="px-4 py-3 border-t border-dark-400/20 bg-dark-300/20">
           {items.length > 0 ? (
             <div className="flex flex-col gap-2">
-              {items.map(it => (
-                <div key={it.id} className="flex justify-between items-center">
-                  <span className="text-cream/60 text-sm">{it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}</span>
-                  <span className="text-cream/40 text-sm">${Number(it.subtotal).toLocaleString('es-AR')}</span>
-                </div>
-              ))}
+              {items.map(it => <ItemLine key={it.id} it={it} barberPct={barber?.commission_pct} />)}
               {Number(draft.tip) > 0 && (
                 <div className="flex justify-between items-center pt-2 mt-1 border-t border-dark-400/20">
                   <span className="text-cream/55 text-sm">Propina</span>
                   <span className="text-gold text-sm font-semibold">+${Number(draft.tip).toLocaleString('es-AR')}</span>
                 </div>
               )}
-            </div>
-          ) : (
-            <p className="text-cream/25 text-xs">Sin detalle de ítems</p>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SaleRow({ sale, paymentMethods, showDate }) {
-  const [open, setOpen]   = useState(false)
-  const [items, setItems] = useState(null)
-  const pm                = paymentMethods.find(p => p.id === sale.payment_method_id)
-  const earnings          = Number(sale.barber_earnings)
-
-  async function handleToggle() {
-    if (open) { setOpen(false); return }
-    if (!items) {
-      const { data } = await supabase.from('sale_items').select('*').eq('sale_id', sale.id)
-      setItems(data || [])
-    }
-    setOpen(true)
-  }
-
-  return (
-    <div className="rounded-2xl border border-emerald-500/20 overflow-hidden">
-      <button
-        onClick={handleToggle}
-        className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-dark-300/30 transition-colors"
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-base font-bold text-cream">${Number(sale.total).toLocaleString('es-AR')}</span>
-            <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-              Oficial ✓
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-x-2 gap-y-0">
-            {showDate && (
-              <span className="text-gold/50 text-xs capitalize">
-                {format(new Date(sale.sale_date + 'T12:00:00'), "d MMM", { locale: es })}
-              </span>
-            )}
-            <span className="text-cream/30 text-xs">{pm?.name || '—'}</span>
-            <span className="text-cream/30 text-xs">{format(new Date(sale.created_at), 'HH:mm')}</span>
-            {earnings > 0 && (
-              <span className="text-gold/65 text-xs font-semibold">
-                Para vos: ${earnings.toLocaleString('es-AR')}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <ChevronDown
-          size={14}
-          className={`text-cream/20 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-        />
-      </button>
-
-      {open && items && (
-        <div className="px-4 py-3 border-t border-emerald-500/15 bg-emerald-500/3">
-          {items.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {items.map(it => (
-                <div key={it.id} className="flex justify-between items-center">
-                  <span className="text-cream/60 text-sm">{it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}</span>
-                  <span className="text-cream/40 text-sm">${Number(it.subtotal).toLocaleString('es-AR')}</span>
-                </div>
-              ))}
-              {Number(sale.tip) > 0 && (
-                <div className="flex justify-between items-center pt-2 mt-1 border-t border-emerald-500/15">
-                  <span className="text-cream/55 text-sm">Propina</span>
-                  <span className="text-gold text-sm font-semibold">+${Number(sale.tip).toLocaleString('es-AR')}</span>
-                </div>
-              )}
               {earnings > 0 && (
-                <div className="flex justify-between items-center pt-2 mt-1 border-t border-emerald-500/15">
-                  <span className="text-emerald-400/80 text-sm font-bold">Te corresponde</span>
-                  <span className="text-emerald-400 text-base font-bold">${earnings.toLocaleString('es-AR')}</span>
+                <div className="flex justify-between items-center pt-2 mt-1 border-t border-dark-400/20">
+                  <span className="text-gold/70 text-sm font-bold">Para vos</span>
+                  <span className="text-gold text-base font-bold">${earnings.toLocaleString('es-AR')}</span>
                 </div>
               )}
             </div>
@@ -212,13 +154,11 @@ export default function BarberHistoryPage() {
   const barber = barberSession?.barber
   const today  = format(new Date(), 'yyyy-MM-dd')
 
-  const [from, setFrom]               = useState(today)
-  const [to, setTo]                   = useState(today)
-  const [drafts, setDrafts]           = useState([])
-  const [sales, setSales]             = useState([])
+  const [from, setFrom]                     = useState(today)
+  const [to, setTo]                         = useState(today)
+  const [drafts, setDrafts]                 = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [tab, setTab]                 = useState('drafts')
+  const [loading, setLoading]               = useState(true)
 
   useEffect(() => {
     if (!tenant?.id) return
@@ -233,29 +173,27 @@ export default function BarberHistoryPage() {
 
   async function load() {
     setLoading(true)
-    const [{ data: draftData }, { data: salesData }] = await Promise.all([
-      supabase.from('drafts').select('*')
-        .eq('tenant_id', tenant.id).eq('barber_id', barber.id)
-        .gte('draft_date', from).lte('draft_date', to)
-        .order('created_at', { ascending: false }),
-      supabase.from('sales').select('*')
-        .eq('tenant_id', tenant.id).eq('barber_id', barber.id)
-        .gte('sale_date', from).lte('sale_date', to)
-        .order('created_at', { ascending: false }),
-    ])
-    setDrafts(draftData || [])
-    setSales(salesData || [])
+    const { data } = await supabase
+      .from('drafts').select('*, draft_items(*)')
+      .eq('tenant_id', tenant.id).eq('barber_id', barber.id)
+      .gte('draft_date', from).lte('draft_date', to)
+      .order('created_at', { ascending: false })
+    setDrafts(data || [])
     setLoading(false)
   }
 
-  const draftTotal   = drafts.reduce((s, d) => s + Number(d.total), 0)
-  const salesTotal   = sales.reduce((s, r) => s + Number(r.total), 0)
-  const myEarnings   = sales.reduce((s, r) => s + Number(r.barber_earnings), 0)
-  const myTips       = sales.reduce((s, r) => s + Number(r.tip), 0)
-  const match        = draftTotal > 0 && salesTotal > 0 && draftTotal === salesTotal
-  const hasActivity  = drafts.length > 0 || sales.length > 0
-  const isSingle     = from === to
-  const isToday      = from === today && to === today
+  // Lo que le corresponde según lo que él mismo cargó: comisión de sus servicios + propinas
+  function earningsOf(draft) {
+    const commission = groupByPct(draft.draft_items || [], barber)
+      .reduce((sum, g) => sum + g.barberAmt, 0)
+    return commission + Number(draft.tip || 0)
+  }
+
+  const draftTotal = drafts.reduce((s, d) => s + Number(d.total), 0)
+  const myEarnings = drafts.reduce((s, d) => s + earningsOf(d), 0)
+  const myTips     = drafts.reduce((s, d) => s + Number(d.tip || 0), 0)
+  const isSingle   = from === to
+  const isToday    = from === today && to === today
 
   return (
     <div className="pb-6">
@@ -269,74 +207,28 @@ export default function BarberHistoryPage() {
         </div>
       </div>
 
-      {/* Resumen */}
-      {hasActivity && !loading && (
+      {/* Resumen — todo calculado con lo que cargó él */}
+      {drafts.length > 0 && !loading && (
         <div className="card mb-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-end justify-between gap-3">
             <div>
-              <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-1">Reporté</p>
-              <p className="font-display text-2xl text-gold">${draftTotal.toLocaleString('es-AR')}</p>
+              <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-1">Cargaste</p>
+              <p className="font-display text-2xl text-cream">${draftTotal.toLocaleString('es-AR')}</p>
               <p className="text-cream/30 text-xs mt-0.5">
                 {drafts.length} registro{drafts.length !== 1 ? 's' : ''}
               </p>
             </div>
-            <div>
-              <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-1">Oficial</p>
-              <p className="font-display text-2xl text-cream">${salesTotal.toLocaleString('es-AR')}</p>
-              <p className="text-cream/30 text-xs mt-0.5">
-                {sales.length} venta{sales.length !== 1 ? 's' : ''}
-              </p>
+            <div className="text-right">
+              <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-1">Te corresponde</p>
+              <p className="font-display text-3xl text-gold">${myEarnings.toLocaleString('es-AR')}</p>
+              {myTips > 0 && (
+                <p className="text-gold/40 text-xs mt-0.5">incl. ${myTips.toLocaleString('es-AR')} en propinas</p>
+              )}
             </div>
           </div>
-
-          {myEarnings > 0 && (
-            <div className="mt-4 pt-4 border-t border-dark-400/30 flex items-end justify-between">
-              <div>
-                <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-0.5">Lo que te corresponde</p>
-                {myTips > 0 && (
-                  <p className="text-gold/40 text-xs">incl. ${myTips.toLocaleString('es-AR')} en propinas</p>
-                )}
-              </div>
-              <p className="font-display text-3xl text-gold">${myEarnings.toLocaleString('es-AR')}</p>
-            </div>
-          )}
-
-          {draftTotal > 0 && salesTotal > 0 && (
-            <div className={`mt-3 flex items-center gap-1.5 text-xs font-semibold ${match ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {match
-                ? <><CheckCircle2 size={13} /> Los totales coinciden</>
-                : <><AlertTriangle size={13} /> Los totales no coinciden — consultá con el admin</>
-              }
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tabs */}
-      {hasActivity && !loading && (
-        <div className="flex gap-1 p-1 rounded-xl mb-4" style={{ background: 'rgb(var(--surface-input) / 0.55)' }}>
-          <button
-            onClick={() => setTab('drafts')}
-            className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              tab === 'drafts'
-                ? 'bg-dark-200 text-gold'
-                : 'text-cream/40 hover:text-cream/65'
-            }`}
-            style={tab === 'drafts' ? { boxShadow: 'var(--sh-card)' } : {}}
-          >
-            Mis registros {drafts.length > 0 && <span className="opacity-60 text-xs">({drafts.length})</span>}
-          </button>
-          <button
-            onClick={() => setTab('sales')}
-            className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              tab === 'sales'
-                ? 'bg-dark-200 text-emerald-400'
-                : 'text-cream/40 hover:text-cream/65'
-            }`}
-            style={tab === 'sales' ? { boxShadow: 'var(--sh-card)' } : {}}
-          >
-            Oficial {sales.length > 0 && <span className="opacity-60 text-xs">({sales.length})</span>}
-          </button>
+          <p className="text-cream/25 text-[11px] mt-3 pt-3 border-t border-dark-400/30">
+            Calculado sobre lo que cargaste vos. La vitrina y las bebidas no suman a tu parte.
+          </p>
         </div>
       )}
 
@@ -344,52 +236,30 @@ export default function BarberHistoryPage() {
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : !hasActivity ? (
+      ) : drafts.length === 0 ? (
         <EmptyState
           icon={ClipboardList}
           title={isToday ? 'Sin registros hoy' : 'Sin registros este período'}
           description={isToday ? 'Tus registros del día aparecerán acá' : 'No hay actividad para estas fechas'}
         />
-      ) : tab === 'drafts' ? (
-        drafts.length === 0 ? (
-          <p className="text-cream/25 text-sm text-center py-8">Sin registros en este período</p>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            <p className="text-cream/28 text-xs flex items-center gap-1.5 mb-1">
-              <Pencil size={11} />
-              Podés editar o eliminar tus registros
-            </p>
-            {drafts.map(d => (
-              <DraftRow
-                key={d.id}
-                draft={d}
-                paymentMethods={paymentMethods}
-                showDate={!isSingle}
-                onDelete={load}
-              />
-            ))}
-          </div>
-        )
       ) : (
-        sales.length === 0 ? (
-          <div className="text-center py-10">
-            <p className="text-cream/30 text-sm font-medium">Sin ventas oficiales</p>
-            <p className="text-cream/20 text-xs mt-1">
-              El admin aún no cargó ventas para este período
-            </p>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            {sales.map(s => (
-              <SaleRow
-                key={s.id}
-                sale={s}
-                paymentMethods={paymentMethods}
-                showDate={!isSingle}
-              />
-            ))}
-          </div>
-        )
+        <div className="flex flex-col gap-2.5">
+          <p className="text-cream/28 text-xs flex items-center gap-1.5 mb-1">
+            <Pencil size={11} />
+            Podés editar o eliminar tus registros
+          </p>
+          {drafts.map(d => (
+            <DraftRow
+              key={d.id}
+              draft={d}
+              paymentMethods={paymentMethods}
+              showDate={!isSingle}
+              onDelete={load}
+              barber={barber}
+              earnings={earningsOf(d)}
+            />
+          ))}
+        </div>
       )}
     </div>
   )

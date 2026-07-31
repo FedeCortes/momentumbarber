@@ -1,21 +1,33 @@
-import { format, subDays, differenceInDays, parseISO } from 'date-fns'
+import { format, subDays, subMonths, startOfMonth, endOfMonth, differenceInDays, parseISO, isFirstDayOfMonth, isLastDayOfMonth, isSameMonth } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Calendar } from 'lucide-react'
 
-const TODAY     = format(new Date(), 'yyyy-MM-dd')
-const YESTERDAY = format(subDays(new Date(), 1), 'yyyy-MM-dd')
-const WEEK_AGO  = format(subDays(new Date(), 6), 'yyyy-MM-dd')
+const TODAY      = format(new Date(), 'yyyy-MM-dd')
+const YESTERDAY  = format(subDays(new Date(), 1), 'yyyy-MM-dd')
+const WEEK_AGO   = format(subDays(new Date(), 6), 'yyyy-MM-dd')
+const MONTH_FROM = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+const PREV_MONTH = subMonths(new Date(), 1)
+const PREV_FROM  = format(startOfMonth(PREV_MONTH), 'yyyy-MM-dd')
+const PREV_TO    = format(endOfMonth(PREV_MONTH), 'yyyy-MM-dd')
 
 const SHORTCUTS = [
-  { label: 'Hoy',     from: TODAY,     to: TODAY },
-  { label: 'Ayer',    from: YESTERDAY, to: YESTERDAY },
-  { label: '7 días',  from: WEEK_AGO,  to: TODAY },
+  { label: 'Hoy',        from: TODAY,      to: TODAY },
+  { label: 'Ayer',       from: YESTERDAY,  to: YESTERDAY },
+  { label: '7 días',     from: WEEK_AGO,   to: TODAY },
+  { label: 'Este mes',   from: MONTH_FROM, to: TODAY },
+  { label: 'Mes pasado', from: PREV_FROM,  to: PREV_TO },
 ]
 
 export function dateRangeLabel(from, to) {
   const isSingle = from === to
   if (isSingle) {
     return format(parseISO(from + 'T12:00:00'), "EEEE d 'de' MMMM", { locale: es })
+  }
+  const dFrom = parseISO(from + 'T12:00:00')
+  const dTo   = parseISO(to   + 'T12:00:00')
+  // Mes completo → se nombra el mes en vez del rango
+  if (isSameMonth(dFrom, dTo) && isFirstDayOfMonth(dFrom) && (isLastDayOfMonth(dTo) || to === TODAY)) {
+    return format(dFrom, "MMMM yyyy", { locale: es })
   }
   const diff = differenceInDays(parseISO(to + 'T12:00:00'), parseISO(from + 'T12:00:00')) + 1
   const fmtFrom = format(parseISO(from + 'T12:00:00'), "d MMM", { locale: es })
