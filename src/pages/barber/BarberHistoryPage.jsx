@@ -189,7 +189,9 @@ export default function BarberHistoryPage() {
     return commission + Number(draft.tip || 0)
   }
 
-  const draftTotal = drafts.reduce((s, d) => s + Number(d.total), 0)
+  const totalCuts  = drafts.reduce((s, d) => s + (d.draft_items || [])
+    .filter(it => it.item_type === 'service')
+    .reduce((ss, it) => ss + Number(it.quantity || 1), 0), 0)
   const myEarnings = drafts.reduce((s, d) => s + earningsOf(d), 0)
   const myTips     = drafts.reduce((s, d) => s + Number(d.tip || 0), 0)
   const isSingle   = from === to
@@ -212,8 +214,8 @@ export default function BarberHistoryPage() {
         <div className="card mb-4">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-1">Cargaste</p>
-              <p className="font-display text-2xl text-cream">${draftTotal.toLocaleString('es-AR')}</p>
+              <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-1">Cortes realizados</p>
+              <p className="font-display text-2xl text-cream">{totalCuts}</p>
               <p className="text-cream/30 text-xs mt-0.5">
                 {drafts.length} registro{drafts.length !== 1 ? 's' : ''}
               </p>
@@ -227,7 +229,7 @@ export default function BarberHistoryPage() {
             </div>
           </div>
           <p className="text-cream/25 text-[11px] mt-3 pt-3 border-t border-dark-400/30">
-            Calculado sobre lo que cargaste vos. La vitrina y las bebidas no suman a tu parte.
+            Tu comisión por servicios más las propinas que cargaste.
           </p>
         </div>
       )}
