@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Pencil, UserX, UserCheck, Users, Check } from 'lucide-react'
+import { Plus, Pencil, Trash2, UserX, UserCheck, Users, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Modal from '../../components/ui/Modal'
@@ -237,7 +237,7 @@ export default function BarbersPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [deleteId, setDeleteId] = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null) // { barber, salesCount, draftsCount }
 
   useEffect(() => { if (tenant?.id) load() }, [tenant?.id])
 
@@ -257,11 +257,29 @@ export default function BarbersPage() {
     load()
   }
 
+  async function openDelete(b) {
+    const [{ count: salesCount }, { count: draftsCount }] = await Promise.all([
+      supabase.from('sales').select('id', { count: 'exact', head: true }).eq('barber_id', b.id),
+      supabase.from('drafts').select('id', { count: 'exact', head: true }).eq('barber_id', b.id),
+    ])
+    setDeleteTarget({ barber: b, salesCount: salesCount || 0, draftsCount: draftsCount || 0 })
+  }
+
   async function handleDelete() {
-    await supabase.from('barbers').delete().eq('id', deleteId)
-    toast.success('Barbero eliminado')
-    setDeleteId(null)
-    load()
+    const { barber } = deleteTarget
+    try {
+      const { error: salesErr } = await supabase.from('sales').delete().eq('barber_id', barber.id)
+      if (salesErr) throw salesErr
+      const { error: draftsErr } = await supabase.from('drafts').delete().eq('barber_id', barber.id)
+      if (draftsErr) throw draftsErr
+      const { error: barberErr } = await supabase.from('barbers').delete().eq('id', barber.id)
+      if (barberErr) throw barberErr
+      toast.success('Barbero eliminado')
+      setDeleteTarget(null)
+      load()
+    } catch (e) {
+      toast.error(e.message)
+    }
   }
 
   return (
@@ -312,6 +330,9 @@ export default function BarbersPage() {
                 <button onClick={() => openEdit(b)} className="btn-ghost p-2">
                   <Pencil size={15} className="text-cream/50" />
                 </button>
+                <button onClick={() => openDelete(b)} className="btn-ghost p-2" title="Eliminar">
+                  <Trash2 size={15} className="text-red-400/70" />
+                </button>
               </div>
             </div>
           ))}
@@ -327,13 +348,24 @@ export default function BarbersPage() {
       </Modal>
 
       <ConfirmDialog
-        open={!!deleteId}
-        onClose={() => setDeleteId(null)}
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="Eliminar barbero"
-        message="¿Eliminás este barbero? Se perderán sus datos asociados."
+        title={deleteTarget ? `Eliminar a ${deleteTarget.barber.name}` : 'Eliminar barbero'}
+        message={deleteTarget && deleteMessage(deleteTarget)}
         danger
       />
     </div>
   )
+}
+
+function deleteMessage({ barber, salesCount, draftsCount }) {
+  const parts = []
+  if (salesCount > 0) parts.push(`${salesCount} venta${salesCount === 1 ? '' : 's'}`)
+  if (draftsCount > 0) parts.push(`${draftsCount} borrador${draftsCount === 1 ? '' : 'es'}`)
+
+  if (parts.length === 0) {
+    return `¿Eliminás a ${barber.name}? Esta acción no se puede deshacer.`
+  }
+  return `${barber.name} tiene ${parts.join(' y ')} registrados. Al eliminarlo se borrarán también de forma permanente, afectando los totales de facturación históricos. Esta acción no se puede deshacer.`
 }

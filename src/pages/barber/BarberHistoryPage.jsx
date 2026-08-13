@@ -219,13 +219,13 @@ export default function BarberHistoryPage() {
               <p className="text-cream/30 text-xs mt-0.5">
                 {drafts.length} registro{drafts.length !== 1 ? 's' : ''}
               </p>
+              {myTips > 0 && (
+                <p className="text-gold/40 text-xs mt-0.5">${myTips.toLocaleString('es-AR')} en propinas</p>
+              )}
             </div>
             <div className="text-right">
               <p className="text-cream/40 text-[11px] uppercase tracking-wider font-bold mb-1">Te corresponde</p>
               <p className="font-display text-3xl text-gold">${myEarnings.toLocaleString('es-AR')}</p>
-              {myTips > 0 && (
-                <p className="text-gold/40 text-xs mt-0.5">incl. ${myTips.toLocaleString('es-AR')} en propinas</p>
-              )}
             </div>
           </div>
           <p className="text-cream/25 text-[11px] mt-3 pt-3 border-t border-dark-400/30">
