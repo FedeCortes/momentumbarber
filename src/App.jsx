@@ -21,6 +21,8 @@ import ExpensesPage from './pages/admin/ExpensesPage'
 import BarberDraftPage from './pages/barber/BarberDraftPage'
 import BarberHistoryPage from './pages/barber/BarberHistoryPage'
 
+import ManualPage from './pages/ManualPage'
+
 function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-dark-100">
@@ -90,12 +92,14 @@ export default function App() {
         <Route path="expenses" element={<ExpensesPage />} />
         <Route path="closing" element={<DayClosingPage />} />
         <Route path="stats" element={<StatsPage />} />
+        <Route path="manual" element={<ManualPage />} />
       </Route>
 
       {/* BARBER */}
       <Route path="/barber" element={<RequireBarber><BarberLayout /></RequireBarber>}>
         <Route index element={<BarberDraftPage />} />
         <Route path="history" element={<BarberHistoryPage />} />
+        <Route path="manual" element={<ManualPage />} />
       </Route>
 
       <Route path="/" element={

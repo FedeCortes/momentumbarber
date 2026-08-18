@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Settings, ShoppingBag,
   FileText, Moon, BarChart2, LogOut, Scissors, ReceiptText,
-  ChevronDown, Sun, MoreHorizontal
+  ChevronDown, Sun, MoreHorizontal, HelpCircle
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
@@ -19,6 +19,8 @@ const navItems = [
   { to: '/admin/stats',    label: 'Estadísticas',  icon: BarChart2 },
   { to: '/admin/config',   label: 'Configuración', icon: Settings },
 ]
+
+const manualItem = { to: '/admin/manual', label: 'Manual', icon: HelpCircle }
 
 function SidebarLink({ to, label, icon: Icon, end }) {
   return (
@@ -144,9 +146,14 @@ export default function AdminLayout() {
       <div className="flex flex-1">
 
         {/* ── Sidebar desktop ── */}
-        <aside className="hidden md:flex flex-col w-56 bg-dark-200/40 border-r border-dark-400/30 pt-3 pb-4 gap-0.5 sticky top-[57px] h-[calc(100vh-57px)]">
+        <aside className="hidden md:flex flex-col w-56 bg-dark-200/40 border-r border-dark-400/30 pt-3 pb-4 sticky top-[57px] h-[calc(100vh-57px)]">
           <p className="text-[10px] text-cream/30 uppercase tracking-widest px-6 pt-2 pb-2 font-bold">Menú</p>
-          {visibleItems.map(item => <SidebarLink key={item.to} {...item} />)}
+          <div className="flex flex-col gap-0.5">
+            {visibleItems.map(item => <SidebarLink key={item.to} {...item} />)}
+          </div>
+          <div className="mt-auto pt-2 border-t border-dark-400/30">
+            <SidebarLink {...manualItem} />
+          </div>
         </aside>
 
         {/* ── Main ── */}
@@ -160,7 +167,7 @@ export default function AdminLayout() {
            style={{ background: 'rgb(var(--surface-card))' }}>
 
         {/* Bandeja "Más" */}
-        {moreOpen && visibleItems.length > 5 && (
+        {moreOpen && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
             <div className="absolute bottom-full left-0 right-0 z-40 border-t border-dark-400/40"
@@ -172,7 +179,7 @@ export default function AdminLayout() {
                   end={end}
                   onClick={() => setMoreOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-colors border-b border-dark-400/25 last:border-0 ${
+                    `flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-colors border-b border-dark-400/25 ${
                       isActive ? 'text-gold' : 'text-cream/60 hover:text-cream'
                     }`
                   }
@@ -185,6 +192,23 @@ export default function AdminLayout() {
                   )}
                 </NavLink>
               ))}
+              {/* Manual — siempre pegado abajo de todo */}
+              <NavLink
+                to={manualItem.to}
+                onClick={() => setMoreOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-colors ${
+                    isActive ? 'text-gold' : 'text-cream/60 hover:text-cream'
+                  }`
+                }
+              >
+                {({ isActive }) => (
+                  <>
+                    <manualItem.icon size={18} strokeWidth={isActive ? 2.2 : 1.6} />
+                    <span>{manualItem.label}</span>
+                  </>
+                )}
+              </NavLink>
             </div>
           </>
         )}
@@ -214,20 +238,18 @@ export default function AdminLayout() {
             </NavLink>
           ))}
 
-          {visibleItems.length > 5 && (
-            <button
-              onClick={() => setMoreOpen(!moreOpen)}
-              className={`relative flex flex-col items-center gap-0.5 px-2 pt-2.5 pb-2 min-w-[3.5rem] text-[10px] font-bold uppercase tracking-wide transition-colors ${
-                moreOpen ? 'text-gold' : 'text-cream/35'
-              }`}
-            >
-              {moreOpen && (
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-gold rounded-full" />
-              )}
-              <MoreHorizontal size={19} strokeWidth={moreOpen ? 2.2 : 1.6} />
-              <span>Más</span>
-            </button>
-          )}
+          <button
+            onClick={() => setMoreOpen(!moreOpen)}
+            className={`relative flex flex-col items-center gap-0.5 px-2 pt-2.5 pb-2 min-w-[3.5rem] text-[10px] font-bold uppercase tracking-wide transition-colors ${
+              moreOpen ? 'text-gold' : 'text-cream/35'
+            }`}
+          >
+            {moreOpen && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-gold rounded-full" />
+            )}
+            <MoreHorizontal size={19} strokeWidth={moreOpen ? 2.2 : 1.6} />
+            <span>Más</span>
+          </button>
         </div>
       </nav>
     </div>

@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, NavLink } from 'react-router-dom'
-import { Scissors, LogOut, PlusCircle, ClipboardList, Sun, Moon } from 'lucide-react'
+import { Scissors, LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -72,6 +72,17 @@ export default function BarberLayout() {
         {/* Acciones */}
         <div className="flex items-center gap-0.5">
           <ThemeToggle />
+          <NavLink
+            to="/barber/manual"
+            className={({ isActive }) =>
+              `w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                isActive ? 'text-gold bg-gold/10' : 'text-cream/40 hover:text-cream hover:bg-dark-300/60'
+              }`
+            }
+            title="Manual"
+          >
+            <HelpCircle size={17} strokeWidth={1.8} />
+          </NavLink>
           <button
             onClick={handleSwitch}
             className="h-9 px-3 rounded-xl text-cream/40 hover:text-cream/75 text-xs font-semibold hover:bg-dark-300/60 transition-all"
