@@ -151,37 +151,48 @@ function Callout({ warn, children }) {
   )
 }
 
-export default function ManualPage() {
-  const { isAdmin, isBarber } = useAuth()
+export default function ManualPage({ compact = false }) {
+  const { isAdmin } = useAuth()
 
   return (
     <div className="pb-8">
       <p className="page-eyebrow">Ayuda</p>
       <h1 className="section-title mb-1">Manual</h1>
-      <p className="section-sub mb-6">Cómo se usa Momentum Barber, pantalla por pantalla</p>
+      <p className="section-sub mb-6">
+        {compact ? 'Guía rápida para vos, el barbero' : 'Cómo se usa Momentum Barber, pantalla por pantalla'}
+      </p>
 
-      {isAdmin && <Roadmap />}
+      {compact && (
+        <Callout warn>
+          <b>Ojo:</b> todo lo que cargás en Registrar es un <b>borrador</b>, nunca una venta oficial.
+          Solo lo que carga el administrador cuenta como oficial — él lo compara contra tu registro y decide.
+        </Callout>
+      )}
+
+      {!compact && isAdmin && <Roadmap />}
 
       {/* ── Antes de arrancar ── */}
-      <div className="card mb-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-lg bg-dark-300 flex items-center justify-center shrink-0">
-            <LogIn size={15} className="text-gold" />
+      {!compact && (
+        <div className="card mb-4">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-8 h-8 rounded-lg bg-dark-300 flex items-center justify-center shrink-0">
+              <LogIn size={15} className="text-gold" />
+            </div>
+            <p className="text-cream text-sm font-semibold">Antes de arrancar</p>
           </div>
-          <p className="text-cream text-sm font-semibold">Antes de arrancar</p>
+          <p className="text-cream/60 text-sm leading-relaxed">
+            Una cuenta abre la puerta de toda la barbería: usuario (o el nombre corto de tu barbería) y contraseña.
+            Después elegís tu perfil — <b className="text-cream">Administrador</b> (pide una segunda clave, la de admin)
+            o <b className="text-cream">Barbero</b> (elegís tu nombre; si tenés pin, te lo pide).
+          </p>
+          <Callout>Cambiás de perfil sin cerrar sesión con el botón <b>«Cambiar»</b>, arriba.</Callout>
         </div>
-        <p className="text-cream/60 text-sm leading-relaxed">
-          Una cuenta abre la puerta de toda la barbería: usuario (o el nombre corto de tu barbería) y contraseña.
-          Después elegís tu perfil — <b className="text-cream">Administrador</b> (pide una segunda clave, la de admin)
-          o <b className="text-cream">Barbero</b> (elegís tu nombre; si tenés pin, te lo pide).
-        </p>
-        <Callout>Cambiás de perfil sin cerrar sesión con el botón <b>«Cambiar»</b>, arriba.</Callout>
-      </div>
+      )}
 
       {/* ── Si sos barbero ── */}
-      <p className="label mt-2">Si sos barbero</p>
+      {!compact && <p className="label mt-2">Si sos barbero</p>}
       <div className="card mb-4">
-        <Row title="Registrar" tag="Cargar un corte" icon={PlusCircle} defaultOpen={isBarber}>
+        <Row title="Registrar" tag="Cargar un corte" icon={PlusCircle} defaultOpen>
           <p className="text-cream/60 text-sm leading-relaxed">Lo primero que ves al entrar. Cargá cada corte apenas lo termines.</p>
           <StepList>
             <Step n={1}>Ves solo los <b>servicios habilitados</b> para vos. ¿Falta uno? Pedíselo al administrador.</Step>
@@ -189,7 +200,7 @@ export default function ManualPage() {
             <Step n={3}><b>Vitrina</b> y <b>Bebidas</b>: 100% para el local, no dejan comisión.</Step>
             <Step n={4}><b>Propina</b>: 100% tuya. Elegís método de pago y confirmás.</Step>
           </StepList>
-          <Callout warn><b>No es una venta oficial.</b> El administrador lo revisa en Registros — cargá justo lo que cobraste.</Callout>
+          <Callout warn><b>No es una venta oficial.</b> Solo lo que carga el administrador cuenta como oficial — él lo revisa en Registros. Cargá justo lo que cobraste.</Callout>
         </Row>
 
         <Row title="Mis registros" tag="Tu historial" icon={ClipboardList}>
@@ -205,7 +216,8 @@ export default function ManualPage() {
       </div>
 
       {/* ── Si sos administrador ── */}
-      <p className="label mt-2">Si sos administrador</p>
+      {!compact && <p className="label mt-2">Si sos administrador</p>}
+      {!compact && (
       <div className="card mb-4">
         <Row title="Dashboard" tag="Pantalla de inicio" icon={LayoutDashboard} defaultOpen={isAdmin}>
           <p className="text-cream/60 text-sm leading-relaxed">Te avisa si hay registros de barberos sin revisar, y te muestra lo recaudado hoy y en el mes.</p>
@@ -226,6 +238,9 @@ export default function ManualPage() {
         </Row>
 
         <Row title="Registros" tag="Comparar lo cargado vs. lo oficial" icon={FileText}>
+          <p className="text-cream/60 text-sm leading-relaxed">
+            Compará lo que cada barbero cargó contra la venta oficial <i>(la oficial es siempre la que carga el administrador — el registro del barbero nunca cuenta por sí solo)</i>.
+          </p>
           <FactList>
             <Fact><b>Coincide</b>: check verde.</Fact>
             <Fact><b>No coincide</b>: aviso, antes de que se escape en el cierre.</Fact>
@@ -273,43 +288,70 @@ export default function ManualPage() {
           </FactList>
         </Row>
       </div>
+      )}
 
       {/* ── Quién ve qué ── */}
-      <p className="label mt-2">Quién ve qué</p>
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="card flex-1">
-          <p className="text-cream text-sm font-semibold mb-2">Barbero</p>
-          <p className="text-cream/55 text-xs leading-relaxed">Registrar · Mis registros</p>
-        </div>
-        <div className="card flex-1" style={{ borderColor: 'rgb(var(--gold) / 0.3)' }}>
-          <p className="text-gold text-sm font-semibold mb-2">Administrador</p>
-          <p className="text-cream/55 text-xs leading-relaxed">Dashboard · Nueva venta · Registros · Barberos · Gastos · Cierre · Estadísticas · Configuración</p>
-        </div>
-      </div>
+      {!compact && (
+        <>
+          <p className="label mt-2">Quién ve qué</p>
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="card flex-1">
+              <p className="text-cream text-sm font-semibold mb-2">Barbero</p>
+              <p className="text-cream/55 text-xs leading-relaxed">Registrar · Mis registros</p>
+            </div>
+            <div className="card flex-1" style={{ borderColor: 'rgb(var(--gold) / 0.3)' }}>
+              <p className="text-gold text-sm font-semibold mb-2">Administrador</p>
+              <p className="text-cream/55 text-xs leading-relaxed">Dashboard · Nueva venta · Registros · Barberos · Gastos · Cierre · Estadísticas · Configuración</p>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── FAQ ── */}
       <p className="label mt-2">Preguntas frecuentes</p>
       <div className="card mb-4">
-        <Row title="¿Por qué la vitrina y las bebidas no le dejan comisión al barbero?">
-          <p className="text-cream/60 text-sm leading-relaxed">
-            Por defecto van 100% al local. Distinto es el <b>precio de barbero</b>: lo que paga si compra para sí mismo, eso sí se descuenta en el Cierre.
-          </p>
-        </Row>
-        <Row title="Un barbero cargó algo distinto a la venta real, ¿qué hago?">
-          <p className="text-cream/60 text-sm leading-relaxed">Andá a Registros: comparás su registro contra la venta oficial. Para el Cierre siempre cuenta la venta oficial.</p>
-        </Row>
-        <Row title="¿Los gastos bajan el total del Cierre?">
-          <p className="text-cream/60 text-sm leading-relaxed">No. Es un registro aparte, no toca la caja del día.</p>
-        </Row>
-        <Row title="Se va un barbero de la barbería, ¿lo borro?">
-          <p className="text-cream/60 text-sm leading-relaxed">Mejor desactivalo desde Barberos. Eliminarlo borra también sus ventas y registros.</p>
-        </Row>
-        <Row title="¿Cómo cambio la clave de administrador?">
-          <p className="text-cream/60 text-sm leading-relaxed">Configuración → Cambiar contraseña de administrador. Mínimo 4 caracteres.</p>
-        </Row>
-        <Row title="¿Cómo funciona el precio de barbero?">
-          <p className="text-cream/60 text-sm leading-relaxed">Se configura una vez por producto, en Configuración. En «Consumo de barbero» se aplica solo y se descuenta en el Cierre.</p>
-        </Row>
+        {compact ? (
+          <>
+            <Row title="¿Por qué esto no es una venta oficial?" defaultOpen>
+              <p className="text-cream/60 text-sm leading-relaxed">
+                Porque solo lo que carga el administrador cuenta como oficial. Tu registro es un borrador: sirve para que él lo compare
+                contra la venta real y decida.
+              </p>
+            </Row>
+            <Row title="¿Cómo sé si mi registro quedó como venta oficial?">
+              <p className="text-cream/60 text-sm leading-relaxed">Preguntale al administrador — él lo revisa en Registros. Vos, en Mis registros, siempre ves tu propio cálculo.</p>
+            </Row>
+            <Row title="¿Por qué la vitrina y las bebidas no me dejan comisión?">
+              <p className="text-cream/60 text-sm leading-relaxed">Van 100% al local por defecto. Distinto es el precio de barbero, que se descuenta en el Cierre si compraste algo para vos.</p>
+            </Row>
+          </>
+        ) : (
+          <>
+            <Row title="¿Por qué la vitrina y las bebidas no le dejan comisión al barbero?">
+              <p className="text-cream/60 text-sm leading-relaxed">
+                Por defecto van 100% al local. Distinto es el <b>precio de barbero</b>: lo que paga si compra para sí mismo, eso sí se descuenta en el Cierre.
+              </p>
+            </Row>
+            <Row title="Un barbero cargó algo distinto a la venta real, ¿qué hago?">
+              <p className="text-cream/60 text-sm leading-relaxed">
+                Andá a Registros: comparás su registro contra la venta oficial. Para el Cierre siempre cuenta la venta oficial
+                <i> (la que carga el administrador — el registro del barbero nunca cuenta por sí solo)</i>.
+              </p>
+            </Row>
+            <Row title="¿Los gastos bajan el total del Cierre?">
+              <p className="text-cream/60 text-sm leading-relaxed">No. Es un registro aparte, no toca la caja del día.</p>
+            </Row>
+            <Row title="Se va un barbero de la barbería, ¿lo borro?">
+              <p className="text-cream/60 text-sm leading-relaxed">Mejor desactivalo desde Barberos. Eliminarlo borra también sus ventas y registros.</p>
+            </Row>
+            <Row title="¿Cómo cambio la clave de administrador?">
+              <p className="text-cream/60 text-sm leading-relaxed">Configuración → Cambiar contraseña de administrador. Mínimo 4 caracteres.</p>
+            </Row>
+            <Row title="¿Cómo funciona el precio de barbero?">
+              <p className="text-cream/60 text-sm leading-relaxed">Se configura una vez por producto, en Configuración. En «Consumo de barbero» se aplica solo y se descuenta en el Cierre.</p>
+            </Row>
+          </>
+        )}
       </div>
 
       <a

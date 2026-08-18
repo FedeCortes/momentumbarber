@@ -99,7 +99,7 @@ export default function App() {
       <Route path="/barber" element={<RequireBarber><BarberLayout /></RequireBarber>}>
         <Route index element={<BarberDraftPage />} />
         <Route path="history" element={<BarberHistoryPage />} />
-        <Route path="manual" element={<ManualPage />} />
+        <Route path="manual" element={<ManualPage compact />} />
       </Route>
 
       <Route path="/" element={

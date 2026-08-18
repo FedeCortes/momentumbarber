@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Check, Plus, Minus, Clock, ChevronDown, ChevronUp, Store, ArrowLeft } from 'lucide-react'
+import { Check, Plus, Minus, Clock, ChevronDown, ChevronUp, Store, ArrowLeft, HelpCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import CommissionBadge from '../../components/ui/CommissionBadge'
@@ -336,8 +336,18 @@ export default function BarberDraftPage() {
           </div>
         ) : (
           <>
-            <p className="page-eyebrow capitalize">{todayLabel}</p>
-            <h1 className="section-title">Hola, {barber?.name?.split(' ')[0]} 👋</h1>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="page-eyebrow capitalize">{todayLabel}</p>
+                <h1 className="section-title">Hola, {barber?.name?.split(' ')[0]} 👋</h1>
+              </div>
+              <Link
+                to="/barber/manual"
+                className="flex items-center gap-1 mt-1 text-cream/35 hover:text-gold text-xs font-medium transition-colors shrink-0"
+              >
+                <HelpCircle size={13} /> Manual
+              </Link>
+            </div>
           </>
         )}
       </div>
