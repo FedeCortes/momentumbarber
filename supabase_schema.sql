@@ -76,24 +76,26 @@ create table public.barber_services (
 -- PRODUCTS (vitrina — 100% para el local)
 -- ============================================================
 create table public.products (
-  id          uuid primary key default uuid_generate_v4(),
-  tenant_id   uuid not null references public.tenants(id) on delete cascade,
-  name        text not null,
-  price       numeric(10,2) not null default 0,
-  is_active   boolean default true,
-  created_at  timestamptz default now()
+  id            uuid primary key default uuid_generate_v4(),
+  tenant_id     uuid not null references public.tenants(id) on delete cascade,
+  name          text not null,
+  price         numeric(10,2) not null default 0,
+  barber_price  numeric(10,2), -- precio especial cuando lo compra un barbero (null = usa price)
+  is_active     boolean default true,
+  created_at    timestamptz default now()
 );
 
 -- ============================================================
 -- DRINKS (bebidas — 100% para el local)
 -- ============================================================
 create table public.drinks (
-  id          uuid primary key default uuid_generate_v4(),
-  tenant_id   uuid not null references public.tenants(id) on delete cascade,
-  name        text not null,
-  price       numeric(10,2) not null default 0,
-  is_active   boolean default true,
-  created_at  timestamptz default now()
+  id            uuid primary key default uuid_generate_v4(),
+  tenant_id     uuid not null references public.tenants(id) on delete cascade,
+  name          text not null,
+  price         numeric(10,2) not null default 0,
+  barber_price  numeric(10,2), -- precio especial cuando lo compra un barbero (null = usa price)
+  is_active     boolean default true,
+  created_at    timestamptz default now()
 );
 
 -- ============================================================
@@ -179,6 +181,25 @@ create table public.draft_items (
 );
 
 -- ============================================================
+-- BARBER_PURCHASES (consumo personal de un barbero, a precio especial)
+-- No es una venta a un cliente: se descuenta de lo que se le paga al
+-- barbero en el cierre, y se contabiliza aparte para el local.
+-- ============================================================
+create table public.barber_purchases (
+  id             uuid primary key default uuid_generate_v4(),
+  tenant_id      uuid not null references public.tenants(id) on delete cascade,
+  barber_id      uuid not null references public.barbers(id) on delete cascade,
+  item_type      text not null check (item_type in ('product', 'drink')),
+  item_id        uuid,
+  name           text not null,
+  price          numeric(10,2) not null default 0,
+  quantity       int not null default 1,
+  subtotal       numeric(10,2) generated always as (price * quantity) stored,
+  purchase_date  date not null default current_date,
+  created_at     timestamptz default now()
+);
+
+-- ============================================================
 -- EXPENSE PAYERS
 -- ============================================================
 create table public.expense_payers (
@@ -229,6 +250,7 @@ alter table public.sale_items       enable row level security;
 alter table public.drafts           enable row level security;
 alter table public.draft_items      enable row level security;
 alter table public.barber_services  enable row level security;
+alter table public.barber_purchases enable row level security;
 alter table public.expenses         enable row level security;
 alter table public.tenant_config    enable row level security;
 
@@ -285,6 +307,9 @@ create policy "draft_items_tenant" on public.draft_items for all
 
 create policy "barber_services_root"   on public.barber_services for all using (public.my_role() = 'root');
 create policy "barber_services_tenant" on public.barber_services for all using (tenant_id = public.my_tenant_id());
+
+create policy "barber_purchases_root"   on public.barber_purchases for all using (public.my_role() = 'root');
+create policy "barber_purchases_tenant" on public.barber_purchases for all using (tenant_id = public.my_tenant_id());
 
 create policy "expenses_root"      on public.expenses for all using (public.my_role() = 'root');
 create policy "expenses_tenant"    on public.expenses for all using (tenant_id = public.my_tenant_id());

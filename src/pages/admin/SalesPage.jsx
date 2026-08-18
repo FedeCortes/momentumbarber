@@ -68,6 +68,7 @@ function ShopBadge() {
 
 export default function SalesPage() {
   const { tenant } = useAuth()
+  const [tab, setTab] = useState('venta') // 'venta' | 'consumo'
   const [barbers, setBarbers] = useState([])
   const [services, setServices] = useState([])
   const [products, setProducts] = useState([])
@@ -86,6 +87,13 @@ export default function SalesPage() {
   const [saved, setSaved] = useState(false)
   const [showVitrina, setShowVitrina] = useState(false)
   const [showBebidas, setShowBebidas] = useState(false)
+
+  // ── Consumo de barbero (compra personal, a precio especial) ──
+  const [consBarber, setConsBarber] = useState('')
+  const [consProducts, setConsProducts] = useState({})
+  const [consDrinks, setConsDrinks] = useState({})
+  const [consLoading, setConsLoading] = useState(false)
+  const [consSaved, setConsSaved] = useState(false)
 
   useEffect(() => {
     if (!tenant?.id) return
@@ -158,6 +166,45 @@ export default function SalesPage() {
     })
   }
 
+  // ── Consumo de barbero: mismo catálogo, pero con el precio especial ──
+  const barberProducts = products.map(p => ({ ...p, price: p.barber_price ?? p.price }))
+  const barberDrinks   = drinks.map(d => ({ ...d, price: d.barber_price ?? d.price }))
+  const consBarberObj  = barbers.find(b => b.id === consBarber) || null
+  const hasConsItems   = Object.keys(consProducts).length > 0 || Object.keys(consDrinks).length > 0
+  const consTotal      = calcTotal(consProducts, barberProducts) + calcTotal(consDrinks, barberDrinks)
+
+  async function handleConsSubmit() {
+    if (!consBarber) return toast.error('Elegí qué barbero consumió')
+    if (!hasConsItems) return toast.error('Agregá al menos un ítem')
+    setConsLoading(true)
+
+    try {
+      const items = [
+        ...buildItems(consProducts, barberProducts, 'product'),
+        ...buildItems(consDrinks, barberDrinks, 'drink'),
+      ].map(i => ({
+        ...i,
+        tenant_id: tenant.id,
+        barber_id: consBarber,
+        purchase_date: format(new Date(), 'yyyy-MM-dd'),
+      }))
+
+      const { error } = await supabase.from('barber_purchases').insert(items)
+      if (error) throw error
+      toast.success('¡Consumo registrado!')
+
+      setConsSaved(true)
+      setTimeout(() => {
+        setConsProducts({}); setConsDrinks({}); setConsBarber('')
+        setConsSaved(false)
+      }, 1200)
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setConsLoading(false)
+    }
+  }
+
   async function handleSubmit() {
     if (!chosen) return toast.error('Elegí quién atendió (o "Solo local")')
     if (!hasServices && !hasShopItems) return toast.error('Agregá al menos un ítem')
@@ -206,13 +253,13 @@ export default function SalesPage() {
     }
   }
 
-  if (saved) {
+  if (saved || consSaved) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center mb-4">
           <Check size={32} className="text-emerald-400" />
         </div>
-        <p className="font-display text-2xl text-cream">¡Venta registrada!</p>
+        <p className="font-display text-2xl text-cream">{saved ? '¡Venta registrada!' : '¡Consumo registrado!'}</p>
         <p className="text-cream/40 text-sm mt-1">Preparando nuevo registro...</p>
       </div>
     )
@@ -222,6 +269,81 @@ export default function SalesPage() {
     <div className="pb-56 md:pb-6">
       <h1 className="section-title mb-1">Nueva venta</h1>
       <p className="section-sub mb-5">Registro oficial de venta</p>
+
+      {/* ── Tabs: venta a cliente vs. consumo interno de barbero ── */}
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setTab('venta')}
+          className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+            tab === 'venta' ? 'border-gold bg-gold/15 text-gold' : 'border-dark-400 text-cream/50 hover:border-dark-500'
+          }`}
+        >
+          Venta
+        </button>
+        <button
+          onClick={() => setTab('consumo')}
+          className={`flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors ${
+            tab === 'consumo' ? 'border-violet-300/60 bg-violet-300/10 text-violet-300' : 'border-dark-400 text-cream/50 hover:border-dark-500'
+          }`}
+        >
+          Consumo de barbero
+        </button>
+      </div>
+
+      {tab === 'consumo' ? (
+        <div className="pb-24 md:pb-0">
+          <div className="card mb-3">
+            <label className="label">¿Qué barbero consumió? *</label>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {barbers.map(b => (
+                <button
+                  key={b.id}
+                  onClick={() => setConsBarber(b.id)}
+                  className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                    consBarber === b.id
+                      ? 'border-violet-300/60 bg-violet-300/15 text-violet-300'
+                      : 'border-dark-400 text-cream/60 hover:border-dark-500'
+                  }`}
+                >
+                  {b.name}
+                </button>
+              ))}
+            </div>
+            <p className="text-cream/35 text-xs mt-2">Se le descuenta de lo que se le paga en el cierre, a precio de barbero.</p>
+          </div>
+
+          <div className="card mb-3">
+            <div className="flex items-center justify-between mb-3">
+              <label className="label mb-0">Vitrina</label>
+              {consTotal > 0 && Object.keys(consProducts).length > 0 && (
+                <span className="text-violet-300 text-sm">${calcTotal(consProducts, barberProducts).toLocaleString('es-AR')}</span>
+              )}
+            </div>
+            <ItemPicker items={barberProducts} selected={consProducts} onToggle={(item, d) => toggle(setConsProducts, item, d)} />
+          </div>
+
+          <div className="card mb-3">
+            <div className="flex items-center justify-between mb-3">
+              <label className="label mb-0">Bebidas</label>
+              {Object.keys(consDrinks).length > 0 && (
+                <span className="text-violet-300 text-sm">${calcTotal(consDrinks, barberDrinks).toLocaleString('es-AR')}</span>
+              )}
+            </div>
+            <ItemPicker items={barberDrinks} selected={consDrinks} onToggle={(item, d) => toggle(setConsDrinks, item, d)} />
+          </div>
+
+          <div className="fixed bottom-[calc(4.5rem_+_env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 md:relative md:bottom-auto md:z-auto bg-dark-200 border-t border-dark-300 md:border md:rounded-xl p-3 sm:p-4 md:card">
+            <div className="flex items-center justify-between mb-2 sm:mb-3 gap-2">
+              <span className="text-cream/60 text-sm shrink-0">Total{consBarberObj ? ` — ${consBarberObj.name}` : ''}</span>
+              <span className="font-display text-2xl sm:text-3xl text-violet-300 truncate">${consTotal.toLocaleString('es-AR')}</span>
+            </div>
+            <button onClick={handleConsSubmit} disabled={consLoading} className="w-full py-2.5 rounded-lg bg-violet-300/15 border border-violet-300/40 text-violet-300 text-sm font-medium hover:bg-violet-300/25 transition-colors">
+              {consLoading ? 'Guardando...' : 'Confirmar consumo'}
+            </button>
+          </div>
+        </div>
+      ) : (
+      <>
 
       {/* ── 1. Quién atiende — define qué servicios se ven y con qué % ── */}
       <div className="card mb-3">
@@ -425,6 +547,8 @@ export default function SalesPage() {
           </button>
         </div>
       </div>
+      </>
+      )}
     </div>
   )
 }

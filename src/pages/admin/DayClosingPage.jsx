@@ -141,6 +141,7 @@ export default function DayClosingPage() {
   const [from, setFrom] = useState(today)
   const [to, setTo]     = useState(today)
   const [sales, setSales]               = useState([])
+  const [barberPurchases, setBarberPurchases] = useState([])
   const [barbers, setBarbers]           = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
   const [loading, setLoading]           = useState(false)
@@ -159,30 +160,41 @@ export default function DayClosingPage() {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase
-      .from('sales')
-      .select('*, sale_items(*)')
-      .eq('tenant_id', tenant.id)
-      .gte('sale_date', from)
-      .lte('sale_date', to)
-      .order('sale_date', { ascending: false })
-    setSales(data || [])
+    const [{ data: salesData }, { data: purchasesData }] = await Promise.all([
+      supabase
+        .from('sales')
+        .select('*, sale_items(*)')
+        .eq('tenant_id', tenant.id)
+        .gte('sale_date', from)
+        .lte('sale_date', to)
+        .order('sale_date', { ascending: false }),
+      supabase
+        .from('barber_purchases')
+        .select('*')
+        .eq('tenant_id', tenant.id)
+        .gte('purchase_date', from)
+        .lte('purchase_date', to),
+    ])
+    setSales(salesData || [])
+    setBarberPurchases(purchasesData || [])
     setLoading(false)
   }
 
   // ── Totales globales ── (incluye recargo: es plata que efectivamente cobró el local al cliente)
   const saleTotal = s => Number(s.total_services || 0) + Number(s.total_products || 0) + Number(s.total_drinks || 0) + Number(s.tip || 0) + Number(s.surcharge_amt || 0)
-  const grandTotal     = sales.reduce((sum, s) => sum + saleTotal(s), 0)
+  // Consumo personal de barberos (precio especial) — entra al local, se descuenta a cada barbero
+  const totalConsumption = barberPurchases.reduce((sum, p) => sum + Number(p.subtotal || 0), 0)
+  const grandTotal     = sales.reduce((sum, s) => sum + saleTotal(s), 0) + totalConsumption
   const totalProducts  = sales.reduce((sum, s) => sum + Number(s.total_products || 0), 0)
   const totalDrinks    = sales.reduce((sum, s) => sum + Number(s.total_drinks || 0), 0)
   const totalTips      = sales.reduce((sum, s) => sum + Number(s.tip || 0), 0)
   const totalSurcharge = sales.reduce((sum, s) => sum + Number(s.surcharge_amt || 0), 0)
-  const totalShop      = sales.reduce((sum, s) => sum + Number(s.shop_earnings || 0), 0)
+  const totalShop      = sales.reduce((sum, s) => sum + Number(s.shop_earnings || 0), 0) + totalConsumption
   const totalServicesAll = sales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
   // Propinas de ventas sin barbero: quedan para el local
   const shopTips = sales.filter(s => !s.barber_id).reduce((sum, s) => sum + Number(s.tip || 0), 0)
   // Lo que retiene el local de los servicios: su % de comisión + servicios de ventas sin barbero (100% local)
-  const shopFromServices = totalShop - totalProducts - totalDrinks - totalSurcharge - shopTips
+  const shopFromServices = totalShop - totalProducts - totalDrinks - totalSurcharge - shopTips - totalConsumption
   // Lo que efectivamente se les pagó a los barberos por comisión de servicios (sin contar propinas)
   const totalBarberServiceCommission = totalServicesAll - shopFromServices
 
@@ -199,7 +211,8 @@ export default function DayClosingPage() {
   // ── Por barbero ──
   const byBarber = barbers.map(b => {
     const bSales = sales.filter(s => s.barber_id === b.id)
-    if (!bSales.length) return null
+    const consumption = barberPurchases.filter(p => p.barber_id === b.id).reduce((sum, p) => sum + Number(p.subtotal || 0), 0)
+    if (!bSales.length && !consumption) return null
     const svcs      = bSales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
     const products  = bSales.reduce((sum, s) => sum + Number(s.total_products || 0), 0)
     const drinks    = bSales.reduce((sum, s) => sum + Number(s.total_drinks || 0), 0)
@@ -209,7 +222,9 @@ export default function DayClosingPage() {
     // Desglose por % aplicado; la comisión sale de lo guardado, no se recalcula
     const rates      = groupByPct(bSales.flatMap(s => s.sale_items || []), b)
     const commission = earnings - tips
-    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, rates, commission, sales: bSales }
+    // Lo que efectivamente se le paga: comisión + propinas, menos lo que consumió a precio de barbero
+    const netEarnings = earnings - consumption
+    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, rates, commission, consumption, netEarnings, sales: bSales }
   }).filter(Boolean)
 
   // ── Ventas sin barbero ──
@@ -238,7 +253,7 @@ export default function DayClosingPage() {
 
     if (byBarber.length) {
       lines.push(``, `👤 A PAGAR:`)
-      byBarber.forEach(({ barber, count, svcs, tips, earnings, rates, commission }) => {
+      byBarber.forEach(({ barber, count, svcs, tips, earnings, rates, commission, consumption, netEarnings }) => {
         const rateLabel = rates.length > 1
           ? `comisión mixta: ${rates.map(r => `${r.pct}%`).join(' / ')}`
           : `${rates[0]?.pct ?? barber.commission_pct}% comisión`
@@ -247,7 +262,8 @@ export default function DayClosingPage() {
         if (rates.length > 1) rates.forEach(r => lines.push(`      ${r.pct}% sobre $${fmt(r.amount)} → $${fmt(r.barberAmt)}`))
         lines.push(`   Comisión:         $${fmt(commission)}`)
         if (tips > 0) lines.push(`   Propinas:         $${fmt(tips)}`)
-        lines.push(`   → COBRAR:          $${fmt(earnings)}`)
+        if (consumption > 0) lines.push(`   Consumo propio:   -$${fmt(consumption)}`)
+        lines.push(`   → COBRAR:          $${fmt(netEarnings)}`)
       })
     }
 
@@ -257,6 +273,7 @@ export default function DayClosingPage() {
       shopTips > 0 ? `   Propinas sin barbero: $${fmt(shopTips)}` : null,
       totalProducts > 0 ? `   Vitrina:            $${fmt(totalProducts)}` : null,
       totalDrinks   > 0 ? `   Bebidas:            $${fmt(totalDrinks)}` : null,
+      totalConsumption > 0 ? `   Consumo de barberos: $${fmt(totalConsumption)}` : null,
       totalSurcharge > 0 ? `   Recargo pagos:      $${fmt(totalSurcharge)}` : null,
     )
 
@@ -311,7 +328,7 @@ export default function DayClosingPage() {
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin mt-6" />
         </div>
-      ) : sales.length === 0 ? (
+      ) : sales.length === 0 && barberPurchases.length === 0 ? (
         <EmptyState
           icon={Moon}
           title="Sin ventas registradas"
@@ -357,7 +374,7 @@ export default function DayClosingPage() {
             <div>
               <SectionLabel>A pagarle a cada barbero</SectionLabel>
               <div className="flex flex-col gap-3">
-                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, rates, commission, sales: bSales }) => (
+                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, rates, commission, consumption, netEarnings, sales: bSales }) => (
                   <div key={barber.id} className="card">
                     {/* Encabezado */}
                     <div className="flex items-center gap-3 mb-4">
@@ -367,7 +384,9 @@ export default function DayClosingPage() {
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-cream text-sm">{barber.name}</p>
                         <p className="text-cream/35 text-xs">
-                          <CountButton count={count} onClick={() => setDetail({ title: barber.name, sales: bSales, showBarber: false })} />
+                          {count > 0
+                            ? <CountButton count={count} onClick={() => setDetail({ title: barber.name, sales: bSales, showBarber: false })} />
+                            : 'Sin ventas'}
                           {' '}· {rates.length > 1
                             ? <span className="text-violet-300/80">comisión mixta ({rates.map(r => `${r.pct}%`).join(' / ')})</span>
                             : `${rates[0]?.pct ?? barber.commission_pct}% comisión`}
@@ -375,7 +394,7 @@ export default function DayClosingPage() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-cream/35 text-xs mb-0.5">a cobrar</p>
-                        <p className="font-display text-2xl text-gold">${fmt(earnings)}</p>
+                        <p className="font-display text-2xl text-gold">${fmt(netEarnings)}</p>
                       </div>
                     </div>
 
@@ -407,9 +426,21 @@ export default function DayClosingPage() {
                           <span className="text-gold/80 text-sm font-medium">+${fmt(tips)}</span>
                         </div>
                       )}
+                      {consumption > 0 && (
+                        <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-400/30">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Coins size={11} className="text-violet-300/60 shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-cream/55 text-xs">Consumo propio</p>
+                              <p className="text-cream/25 text-[11px]">A precio de barbero</p>
+                            </div>
+                          </div>
+                          <span className="text-red-400/60 text-sm font-medium shrink-0">-${fmt(consumption)}</span>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between px-4 py-2.5 bg-gold/5">
                         <span className="text-gold/70 text-xs font-semibold uppercase tracking-wider">Total a pagarle</span>
-                        <span className="text-gold font-display text-lg">${fmt(earnings)}</span>
+                        <span className="text-gold font-display text-lg">${fmt(netEarnings)}</span>
                       </div>
                     </div>
                   </div>
@@ -476,6 +507,9 @@ export default function DayClosingPage() {
                 )}
                 {totalDrinks > 0 && (
                   <MoneyRow icon={Droplets} label="Bebidas" sub="100% local" amount={totalDrinks} />
+                )}
+                {totalConsumption > 0 && (
+                  <MoneyRow icon={Coins} label="Consumo de barberos" sub="Precio especial, ya descontado a cada barbero" amount={totalConsumption} />
                 )}
                 {totalSurcharge > 0 && (
                   <MoneyRow

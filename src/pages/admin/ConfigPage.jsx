@@ -5,14 +5,16 @@ import { useAuth } from '../../context/AuthContext'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import toast from 'react-hot-toast'
 
-function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
+function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false }) {
   const [items, setItems] = useState([])
   const [quickName, setQuickName] = useState('')
   const [quickPrice, setQuickPrice] = useState('')
+  const [quickBarberPrice, setQuickBarberPrice] = useState('')
   const [adding, setAdding] = useState(false)
   const [editId, setEditId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editPrice, setEditPrice] = useState('')
+  const [editBarberPrice, setEditBarberPrice] = useState('')
   const [deleteId, setDeleteId] = useState(null)
   const nameRef = useRef(null)
   const priceRef = useRef(null)
@@ -27,12 +29,18 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
   async function quickAdd() {
     if (!quickName.trim()) return
     setAdding(true)
-    const payload = { name: quickName.trim(), tenant_id: tenantId, ...(showPrice ? { price: Number(quickPrice) || 0 } : {}) }
+    const payload = {
+      name: quickName.trim(),
+      tenant_id: tenantId,
+      ...(showPrice ? { price: Number(quickPrice) || 0 } : {}),
+      ...(showBarberPrice ? { barber_price: quickBarberPrice === '' ? null : Number(quickBarberPrice) } : {}),
+    }
     const { error } = await supabase.from(tableName).insert(payload)
     setAdding(false)
     if (error) return toast.error(error.message)
     setQuickName('')
     setQuickPrice('')
+    setQuickBarberPrice('')
     nameRef.current?.focus()
     load()
   }
@@ -45,11 +53,16 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
     setEditId(item.id)
     setEditName(item.name)
     setEditPrice(item.price ?? '')
+    setEditBarberPrice(item.barber_price ?? '')
   }
 
   async function saveEdit(item) {
     if (!editName.trim()) return
-    const payload = { name: editName.trim(), ...(showPrice ? { price: Number(editPrice) || 0 } : {}) }
+    const payload = {
+      name: editName.trim(),
+      ...(showPrice ? { price: Number(editPrice) || 0 } : {}),
+      ...(showBarberPrice ? { barber_price: editBarberPrice === '' ? null : Number(editBarberPrice) } : {}),
+    }
     await supabase.from(tableName).update(payload).eq('id', item.id)
     setEditId(null)
     load()
@@ -67,10 +80,10 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
       <h3 className="font-display text-lg text-cream mb-4">{title}</h3>
 
       {/* Fila de carga rápida */}
-      <div className="flex gap-2 mb-4">
+      <div className="flex gap-2 mb-4 flex-wrap">
         <input
           ref={nameRef}
-          className="input-dark flex-1"
+          className="input-dark flex-1 min-w-[8rem]"
           placeholder="Nombre..."
           value={quickName}
           onChange={e => setQuickName(e.target.value)}
@@ -81,10 +94,21 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
             ref={priceRef}
             type="number"
             min="0"
-            className="input-dark w-28"
+            className="input-dark w-24"
             placeholder="Precio"
             value={quickPrice}
             onChange={e => setQuickPrice(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        )}
+        {showBarberPrice && (
+          <input
+            type="number"
+            min="0"
+            className="input-dark w-28"
+            placeholder="Precio barbero"
+            value={quickBarberPrice}
+            onChange={e => setQuickBarberPrice(e.target.value)}
             onKeyDown={handleKeyDown}
           />
         )}
@@ -96,6 +120,9 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
           <Plus size={16} />
         </button>
       </div>
+      {showBarberPrice && (
+        <p className="text-cream/30 text-xs -mt-3 mb-4">Precio barbero: lo que paga un barbero por consumo propio. Vacío = usa el precio normal.</p>
+      )}
 
       {/* Lista */}
       {items.length === 0 ? (
@@ -103,11 +130,11 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
       ) : (
         <div className="flex flex-col divide-y divide-dark-300">
           {items.map(item => (
-            <div key={item.id} className="flex items-center gap-3 py-2.5">
+            <div key={item.id} className="flex items-center gap-3 py-2.5 flex-wrap">
               {editId === item.id ? (
                 <>
                   <input
-                    className="input-dark flex-1 py-1 text-sm"
+                    className="input-dark flex-1 py-1 text-sm min-w-[8rem]"
                     value={editName}
                     onChange={e => setEditName(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
@@ -122,6 +149,16 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
                       onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
                     />
                   )}
+                  {showBarberPrice && (
+                    <input
+                      type="number"
+                      className="input-dark w-28 py-1 text-sm"
+                      placeholder="Precio barbero"
+                      value={editBarberPrice}
+                      onChange={e => setEditBarberPrice(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                    />
+                  )}
                   <button onClick={() => saveEdit(item)} className="text-emerald-400 hover:text-emerald-300 p-1">
                     <Check size={16} />
                   </button>
@@ -131,10 +168,15 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true }) {
                 </>
               ) : (
                 <>
-                  <span className="flex-1 text-cream/80 text-sm">{item.name}</span>
+                  <span className="flex-1 text-cream/80 text-sm min-w-[8rem]">{item.name}</span>
                   {showPrice && (
                     <span className="text-gold text-sm font-medium shrink-0">
                       ${Number(item.price).toLocaleString('es-AR')}
+                    </span>
+                  )}
+                  {showBarberPrice && (
+                    <span className="text-violet-300/70 text-xs shrink-0">
+                      barbero: ${Number(item.barber_price ?? item.price).toLocaleString('es-AR')}
                     </span>
                   )}
                   <div className="flex gap-0.5 shrink-0">
@@ -335,8 +377,8 @@ export default function ConfigPage() {
       <p className="section-sub mb-6">Catálogos y ajustes de {tenant.name}</p>
 
       <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
-      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice />
-      <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice />
+      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice />
+      <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice showBarberPrice />
       <CatalogSection title="Pagadores" tableName="expense_payers" tenantId={tenant.id} showPrice={false} />
       <PaymentMethodSection tenantId={tenant.id} />
 
