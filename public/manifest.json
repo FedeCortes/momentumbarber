@@ -1,7 +1,7 @@
 {
   "name": "Momentum Barber",
   "short_name": "Momentum",
-  "description": "Gestión de turnos y ventas de Momentum Barbería",
+  "description": "Gestión de ventas, comisiones y cierre de caja para barberías",
   "theme_color": "#14120F",
   "background_color": "#14120F",
   "display": "standalone",

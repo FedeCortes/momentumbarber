@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, LogOut, Scissors, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, LogOut, Sun, Moon } from 'lucide-react'
+import BarberPole from '../ui/BarberPole'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -22,7 +23,7 @@ export default function RootLayout() {
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
                style={{ background: 'rgb(var(--gold))' }}>
-            <Scissors size={15} style={{ color: 'rgb(var(--ink))' }} />
+            <BarberPole size={17} strokeWidth={2} style={{ color: 'rgb(var(--ink))' }} />
           </div>
           <span className="font-display text-base font-semibold text-cream">Momentum</span>
           <span className="text-cream/25 text-xs hidden sm:block">ROOT</span>

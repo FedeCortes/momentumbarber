@@ -1,10 +1,11 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Settings, ShoppingBag,
-  FileText, Moon, BarChart2, LogOut, Scissors, ReceiptText,
+  FileText, Moon, BarChart2, LogOut, ReceiptText,
   ChevronDown, Sun, MoreHorizontal, HelpCircle
 } from 'lucide-react'
 import { useState } from 'react'
+import BarberPole from '../ui/BarberPole'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -95,7 +96,7 @@ export default function AdminLayout() {
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
                style={{ background: 'rgb(var(--gold))', boxShadow: 'var(--sh-gold)' }}>
-            <Scissors size={15} style={{ color: 'rgb(var(--ink))' }} />
+            <BarberPole size={17} strokeWidth={2} style={{ color: 'rgb(var(--ink))' }} />
           </div>
           <div>
             <p className="font-display text-sm font-semibold text-cream leading-tight">{tenant?.name || 'Momentum'}</p>

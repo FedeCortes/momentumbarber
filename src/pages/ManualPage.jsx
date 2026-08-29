@@ -4,7 +4,9 @@ import {
   ChevronDown, ChevronUp, LogIn, ShoppingBag, FileText, Moon, Users, Settings,
   ReceiptText, BarChart2, LayoutDashboard, PlusCircle, ClipboardList,
   AlertTriangle, Sparkles, Check, MessageCircle, Percent, ArrowRight, Rocket,
+  Boxes, BookOpen,
 } from 'lucide-react'
+import BarberPole from '../components/ui/BarberPole'
 import { useAuth } from '../context/AuthContext'
 
 const setupSteps = [
@@ -28,6 +30,13 @@ const setupSteps = [
     desc: 'Opcional: volvé a Barberos si alguno cobra distinto en un servicio puntual, o no lo hace.',
     to: '/admin/barbers',
     cta: 'Ir a Barberos',
+  },
+  {
+    icon: Boxes,
+    title: 'Activá el stock (opcional)',
+    desc: 'Si querés llevar el inventario de vitrina y bebidas: prendé el control de stock y cargá cuántas unidades tenés de cada uno.',
+    to: '/admin/config',
+    cta: 'Ir a Configuración',
   },
   {
     icon: ShoppingBag,
@@ -156,10 +165,20 @@ export default function ManualPage({ compact = false }) {
 
   return (
     <div className="pb-8">
-      <p className="page-eyebrow">Ayuda</p>
-      <h1 className="section-title mb-1">Manual</h1>
+      <div className="flex items-center gap-2.5 mb-3">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+             style={{ background: 'rgb(var(--gold))', boxShadow: 'var(--sh-gold)' }}>
+          <BarberPole size={19} strokeWidth={2} style={{ color: 'rgb(var(--ink))' }} />
+        </div>
+        <div>
+          <p className="page-eyebrow mb-0">Ayuda</p>
+          <h1 className="section-title leading-tight">Manual</h1>
+        </div>
+      </div>
       <p className="section-sub mb-6">
-        {compact ? 'Guía rápida para vos, el barbero' : 'Cómo se usa Momentum Barber, pantalla por pantalla'}
+        {compact
+          ? 'Guía rápida para vos, el barbero.'
+          : 'Momentum Barber es la caja registradora de tu barbería: cargás cada venta, el sistema reparte la comisión de cada barbero y a la noche el cierre ya está armado. Acá tenés cómo se usa, pantalla por pantalla.'}
       </p>
 
       {compact && (
@@ -201,6 +220,7 @@ export default function ManualPage({ compact = false }) {
             <Step n={4}><b>Propina</b>: 100% tuya. Elegís método de pago y confirmás.</Step>
           </StepList>
           <Callout warn><b>No es una venta oficial.</b> Solo lo que carga el administrador cuenta como oficial — él lo revisa en Registros. Cargá justo lo que cobraste.</Callout>
+          <Callout>Si la barbería usa <b>control de stock</b>, cada bebida o producto te muestra cuántas <b>quedan</b>. Lo que está en rojo o <b>«Sin stock»</b> no lo podés cargar: avisale al administrador para que reponga.</Callout>
         </Row>
 
         <Row title="Mis registros" tag="Tu historial" icon={ClipboardList}>
@@ -228,8 +248,8 @@ export default function ManualPage({ compact = false }) {
           <StepList>
             <Step n={1}><b>¿Quién lo atendió?</b> El barbero, o «Solo local» (100% para el local).</Step>
             <Step n={2}><b>Servicios:</b> solo los habilitados para ese barbero, con el reparto ya calculado.</Step>
-            <Step n={3}><b>Vitrina y Bebidas</b> (100% local), propina y método de pago (recargo automático).</Step>
-            <Step n={4}>Confirmás y queda como venta oficial, la que cuenta para el Cierre.</Step>
+            <Step n={3}><b>Vitrina y Bebidas</b> (100% local), propina y método de pago (recargo automático). Con el stock activo se ve cuántas quedan y no te deja vender sin stock.</Step>
+            <Step n={4}>Confirmás y queda como venta oficial, la que cuenta para el Cierre <i>(y la que descuenta stock)</i>.</Step>
           </StepList>
           <p className="text-cream/60 text-sm leading-relaxed mt-1">
             <b className="text-gold">Consumo de barbero</b>: cuando un barbero se compra algo para él, a un precio distinto al de cliente.
@@ -271,8 +291,23 @@ export default function ManualPage({ compact = false }) {
             <Fact><b>Servicios</b> — nombre y precio.</Fact>
             <Fact><b>Vitrina y bebidas</b> — precio normal y precio de barbero.</Fact>
             <Fact><b>Pagadores</b> y <b>métodos de pago</b> (con recargo si corresponde).</Fact>
-            <Fact>Cambiar la <b>clave de administrador</b>.</Fact>
+            <Fact>El <b>switch de Control de stock</b> (ver abajo) y la <b>clave de administrador</b>.</Fact>
           </FactList>
+        </Row>
+
+        <Row title="Control de stock" tag="Opcional — inventario de vitrina y bebidas" icon={Boxes}>
+          <p className="text-cream/60 text-sm leading-relaxed">
+            Un switch en <b>Configuración</b> lo prende o lo apaga. <b>Apagado</b> (por defecto), la app funciona igual que siempre y no se habla más de stock.
+            <b> Prendido</b>, cada producto y bebida lleva su inventario.
+          </p>
+          <StepList>
+            <Step n={1}>En <b>Configuración → Productos / Bebidas</b>, cargás cuántas unidades tenés con <b>− / +</b> o escribiendo el número.</Step>
+            <Step n={2}>Con el lápiz fijás el <b>stock mínimo</b> (punto de reposición). Cuando el stock llega a ese número o menos, queda en <b>rojo</b>; por encima, en <b>verde</b>.</Step>
+            <Step n={3}>Al vender (vos, el consumo de barbero o el registro del barbero) aparece cuántas <b>quedan</b>, y baja a medida que sumás.</Step>
+            <Step n={4}>Si algo está en <b>0</b> no se puede vender hasta reponer.</Step>
+          </StepList>
+          <Callout>El stock <b>se descuenta solo en la venta oficial</b> (o al pasar un borrador a oficial). Si editás o eliminás esa venta, el stock se ajusta o se repone solo.</Callout>
+          <Callout warn>El registro del barbero <b>muestra</b> el stock pero <b>no lo descuenta</b>: la baja real ocurre cuando la venta se hace oficial. Mientras tanto el número puede quedar un poco alto si todavía no cerraste el día.</Callout>
         </Row>
 
         <Row title="Gastos" tag="Lo que sale de la caja" icon={ReceiptText}>
@@ -307,6 +342,30 @@ export default function ManualPage({ compact = false }) {
         </>
       )}
 
+      {/* ── Glosario ── */}
+      <p className="label mt-2">En criollo</p>
+      <div className="card mb-4">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-8 h-8 rounded-lg bg-dark-300 flex items-center justify-center shrink-0">
+            <BookOpen size={15} className="text-gold" />
+          </div>
+          <p className="text-cream text-sm font-semibold">Cuatro palabras que se repiten</p>
+        </div>
+        <dl className="flex flex-col gap-3">
+          {[
+            ['Borrador', 'Lo que carga el barbero desde su celular. Es su registro, sirve para comparar. Nunca cuenta por sí solo.'],
+            ['Venta oficial', 'La que carga el administrador. Es la única que cuenta para el Cierre, las Estadísticas y el stock.'],
+            ['Comisión', 'El porcentaje de cada servicio que se lleva el barbero. Puede ser general o distinta para un servicio puntual.'],
+            ['Cierre', 'El resumen del día: cuánto entró, cuánto le toca a cada barbero y cuánto queda para el local.'],
+          ].map(([term, def]) => (
+            <div key={term}>
+              <dt className="text-cream text-sm font-semibold">{term}</dt>
+              <dd className="text-cream/55 text-xs leading-relaxed mt-0.5">{def}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
       {/* ── FAQ ── */}
       <p className="label mt-2">Preguntas frecuentes</p>
       <div className="card mb-4">
@@ -323,6 +382,9 @@ export default function ManualPage({ compact = false }) {
             </Row>
             <Row title="¿Por qué la vitrina y las bebidas no me dejan comisión?">
               <p className="text-cream/60 text-sm leading-relaxed">Van 100% al local por defecto. Distinto es el precio de barbero, que se descuenta en el Cierre si compraste algo para vos.</p>
+            </Row>
+            <Row title="Un producto dice «Sin stock», ¿qué hago?">
+              <p className="text-cream/60 text-sm leading-relaxed">No lo podés cargar hasta que el administrador reponga: avisale. El número de «quedan» lo maneja él desde Configuración.</p>
             </Row>
           </>
         ) : (
@@ -349,6 +411,15 @@ export default function ManualPage({ compact = false }) {
             </Row>
             <Row title="¿Cómo funciona el precio de barbero?">
               <p className="text-cream/60 text-sm leading-relaxed">Se configura una vez por producto, en Configuración. En «Consumo de barbero» se aplica solo y se descuenta en el Cierre.</p>
+            </Row>
+            <Row title="¿Tengo que usar el control de stock?">
+              <p className="text-cream/60 text-sm leading-relaxed">No. Viene apagado y la app funciona igual sin él. Prendelo solo si querés llevar el inventario de vitrina y bebidas — se activa y desactiva cuando quieras desde Configuración.</p>
+            </Row>
+            <Row title="¿Para qué sirve el «stock mínimo»?">
+              <p className="text-cream/60 text-sm leading-relaxed">Es el punto de reposición: cuando el stock baja hasta ese número (o menos) el producto se marca en rojo, para que sepas de una qué comprar. Por encima, verde.</p>
+            </Row>
+            <Row title="Vendí algo y el stock no bajó, ¿por qué?">
+              <p className="text-cream/60 text-sm leading-relaxed">El stock baja con la <b>venta oficial</b> (la que cargás vos), no con el borrador del barbero. Al cerrar el día y pasar todo a oficial, queda al día. Si editás o borrás una venta, el stock se ajusta solo.</p>
             </Row>
           </>
         )}

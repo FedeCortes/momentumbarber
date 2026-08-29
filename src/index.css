@@ -207,6 +207,32 @@ html.theme-switching *::after {
     content: '';
     @apply flex-1 border-t border-dark-400/40;
   }
+
+  /* ── Barbershop pinstripe — textura sutil para pantallas "vidriera" (login, selección) ── */
+  .barber-bg { position: relative; isolation: isolate; }
+  .barber-bg::before {
+    content: '';
+    position: absolute; inset: 0; z-index: -1; pointer-events: none;
+    background-image: repeating-linear-gradient(
+      135deg,
+      rgb(var(--gold) / 0.05) 0 1px,
+      transparent 1px 11px
+    );
+    -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 32%, #000 0%, transparent 78%);
+            mask-image: radial-gradient(ellipse 70% 60% at 50% 32%, #000 0%, transparent 78%);
+  }
+  html.light .barber-bg::before { background-image: repeating-linear-gradient(135deg, rgb(var(--gold) / 0.09) 0 1px, transparent 1px 11px); }
+
+  /* Filete ornamental — divisor corto estilo barbería */
+  .barber-rule {
+    display: flex; align-items: center; justify-content: center; gap: .5rem;
+    color: rgb(var(--gold) / 0.55);
+  }
+  .barber-rule::before, .barber-rule::after {
+    content: ''; height: 1px; width: 2.2rem;
+    background: linear-gradient(to var(--dir, right), transparent, currentColor);
+  }
+  .barber-rule::before { --dir: left; }
 }
 
 /* ═══════════════════════════════════════════════════════════

@@ -1,5 +1,6 @@
 import { Outlet, useNavigate, NavLink } from 'react-router-dom'
-import { Scissors, LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle } from 'lucide-react'
+import { LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle } from 'lucide-react'
+import BarberPole from '../ui/BarberPole'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -57,7 +58,7 @@ export default function BarberLayout() {
             className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
             style={{ background: 'rgb(var(--gold))', boxShadow: 'var(--sh-gold)' }}
           >
-            <Scissors size={16} style={{ color: 'rgb(var(--ink))' }} strokeWidth={2} />
+            <BarberPole size={18} strokeWidth={2} style={{ color: 'rgb(var(--ink))' }} />
           </div>
           <div>
             <p className="font-display text-sm font-semibold text-cream leading-tight">

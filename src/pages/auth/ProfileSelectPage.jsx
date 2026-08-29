@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Shield, Scissors, Eye, EyeOff, ChevronLeft, Lock, Sun, Moon } from 'lucide-react'
+import BarberPole from '../../components/ui/BarberPole'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { supabase } from '../../lib/supabase'
@@ -64,7 +65,7 @@ export default function ProfileSelectPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-100 px-4 py-8 relative">
+    <div className="barber-bg min-h-screen flex items-center justify-center bg-dark-100 px-4 py-8 relative">
       <button
         onClick={toggle}
         className="absolute top-4 right-4 p-2 rounded-xl text-cream/35 hover:text-cream hover:bg-dark-300/60 transition-all"
@@ -76,7 +77,7 @@ export default function ProfileSelectPage() {
         {/* Branding */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-14 h-14 rounded-2xl bg-gold/15 border border-gold/25 flex items-center justify-center mb-4">
-            <Scissors size={24} className="text-gold" />
+            <BarberPole size={26} strokeWidth={1.9} className="text-gold" />
           </div>
           <h1 className="font-display text-2xl text-cream">{tenant?.name}</h1>
           <p className="text-cream/35 text-sm mt-0.5">¿Con qué perfil ingresás?</p>
