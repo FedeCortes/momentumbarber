@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Moon, Share2, Download, Scissors, ShoppingBag, Droplets, ArrowRightLeft, Banknote, Minus, Equal, Percent, Coins } from 'lucide-react'
-import { supabase } from '../../lib/supabase'
+import { Moon, Share2, Download, Scissors, ShoppingBag, Droplets, ArrowRightLeft, Banknote, Minus, Equal, Percent, Coins, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -8,6 +7,7 @@ import EmptyState from '../../components/ui/EmptyState'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
 import Modal from '../../components/ui/Modal'
 import { groupByPct } from '../../lib/earnings'
+import { qAll } from '../../lib/query'
 import toast from 'react-hot-toast'
 
 function fmt(n) { return Number(n || 0).toLocaleString('es-AR') }
@@ -144,41 +144,43 @@ export default function DayClosingPage() {
   const [barberPurchases, setBarberPurchases] = useState([])
   const [barbers, setBarbers]           = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
-  const [loading, setLoading]           = useState(false)
+  const [loading, setLoading]           = useState(true)
+  const [loadError, setLoadError]       = useState(false)
+  const [reloadKey, setReloadKey]       = useState(0)
   const [shared, setShared]             = useState(false)
   const [detail, setDetail]             = useState(null) // { title, sales, showBarber }
 
+  // Una sola carga con reintento (antes: dos cargas sueltas, sin manejo de error)
   useEffect(() => {
     if (!tenant?.id) return
-    Promise.all([
-      supabase.from('barbers').select('*').eq('tenant_id', tenant.id),
-      supabase.from('payment_methods').select('*').eq('tenant_id', tenant.id),
-    ]).then(([b, pm]) => { setBarbers(b.data || []); setPaymentMethods(pm.data || []) })
-  }, [tenant?.id])
-
-  useEffect(() => { if (tenant?.id) load() }, [tenant?.id, from, to])
-
-  async function load() {
+    let alive = true
     setLoading(true)
-    const [{ data: salesData }, { data: purchasesData }] = await Promise.all([
-      supabase
-        .from('sales')
-        .select('*, sale_items(*)')
-        .eq('tenant_id', tenant.id)
-        .gte('sale_date', from)
-        .lte('sale_date', to)
-        .order('sale_date', { ascending: false }),
-      supabase
-        .from('barber_purchases')
-        .select('*')
-        .eq('tenant_id', tenant.id)
-        .gte('purchase_date', from)
-        .lte('purchase_date', to),
-    ])
-    setSales(salesData || [])
-    setBarberPurchases(purchasesData || [])
-    setLoading(false)
-  }
+    setLoadError(false)
+    ;(async () => {
+      try {
+        const [b, pm, salesData, purchasesData] = await qAll([
+          s => s.from('barbers').select('*').eq('tenant_id', tenant.id),
+          s => s.from('payment_methods').select('*').eq('tenant_id', tenant.id),
+          s => s.from('sales').select('*, sale_items(*)').eq('tenant_id', tenant.id)
+                .gte('sale_date', from).lte('sale_date', to).order('sale_date', { ascending: false }),
+          s => s.from('barber_purchases').select('*').eq('tenant_id', tenant.id)
+                .gte('purchase_date', from).lte('purchase_date', to),
+        ])
+        if (!alive) return
+        setBarbers(b || [])
+        setPaymentMethods(pm || [])
+        setSales(salesData || [])
+        setBarberPurchases(purchasesData || [])
+      } catch {
+        if (alive) setLoadError(true)
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [tenant?.id, from, to, reloadKey])
+
+  function load() { setReloadKey(k => k + 1) }
 
   // ── Totales globales ── (incluye recargo: es plata que efectivamente cobró el local al cliente)
   const saleTotal = s => Number(s.total_services || 0) + Number(s.total_products || 0) + Number(s.total_drinks || 0) + Number(s.tip || 0) + Number(s.surcharge_amt || 0)
@@ -327,6 +329,12 @@ export default function DayClosingPage() {
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin mt-6" />
+        </div>
+      ) : loadError ? (
+        <div className="card flex flex-col items-center text-center gap-3 py-10 mt-5">
+          <AlertTriangle size={22} className="text-amber-400" />
+          <p className="text-cream/70 text-sm">No se pudo cargar. Puede ser la conexión.</p>
+          <button onClick={load} className="btn-outline-gold text-sm">Reintentar</button>
         </div>
       ) : sales.length === 0 && barberPurchases.length === 0 ? (
         <EmptyState

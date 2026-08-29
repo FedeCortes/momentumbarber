@@ -9,6 +9,7 @@ import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePi
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import { splitServices, buildServiceItems, groupByPct, servicePct, hasCustomPct, isServiceEnabled, overridesByBarber } from '../../lib/earnings'
 import { applyStockDelta } from '../../lib/stock'
+import { qAll } from '../../lib/query'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -942,36 +943,44 @@ export default function DraftsPage() {
   const [paymentMethods, setPaymentMethods] = useState([])
   const [barberSvcs, setBarberSvcs] = useState({})
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const [showDrafts, setShowDrafts] = useState(false)
 
+  // Una sola carga para TODO (barberos + catálogo + ventas + borradores), con
+  // reintento. Antes eran dos cargas sueltas y sin manejo de error: si fallaba
+  // la de barberos, Registros quedaba "solo con lo del local".
   useEffect(() => {
     if (!tenant?.id) return
-    Promise.all([
-      supabase.from('barbers').select('*').eq('tenant_id', tenant.id),
-      supabase.from('payment_methods').select('*').eq('tenant_id', tenant.id),
-      supabase.from('barber_services').select('*').eq('tenant_id', tenant.id),
-    ]).then(([b, pm, bs]) => {
-      setBarbers(b.data || [])
-      setPaymentMethods(pm.data || [])
-      setBarberSvcs(overridesByBarber(bs.data || []))
-    })
-  }, [tenant?.id])
-
-  useEffect(() => {
-    if (!tenant?.id) return
-    load()
-  }, [tenant?.id, from, to])
-
-  async function load() {
+    let alive = true
     setLoading(true)
-    const [{ data: draftData }, { data: salesData }] = await Promise.all([
-      supabase.from('drafts').select('*').eq('tenant_id', tenant.id).gte('draft_date', from).lte('draft_date', to).order('created_at'),
-      supabase.from('sales').select('*').eq('tenant_id', tenant.id).gte('sale_date', from).lte('sale_date', to).order('created_at'),
-    ])
-    setDrafts(draftData || [])
-    setSales(salesData || [])
-    setLoading(false)
-  }
+    setLoadError(false)
+    ;(async () => {
+      try {
+        const [b, pm, bs, draftData, salesData] = await qAll([
+          s => s.from('barbers').select('*').eq('tenant_id', tenant.id),
+          s => s.from('payment_methods').select('*').eq('tenant_id', tenant.id),
+          s => s.from('barber_services').select('*').eq('tenant_id', tenant.id),
+          s => s.from('drafts').select('*').eq('tenant_id', tenant.id).gte('draft_date', from).lte('draft_date', to).order('created_at'),
+          s => s.from('sales').select('*').eq('tenant_id', tenant.id).gte('sale_date', from).lte('sale_date', to).order('created_at'),
+        ])
+        if (!alive) return
+        setBarbers(b || [])
+        setPaymentMethods(pm || [])
+        setBarberSvcs(overridesByBarber(bs || []))
+        setDrafts(draftData || [])
+        setSales(salesData || [])
+      } catch {
+        if (alive) setLoadError(true)
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [tenant?.id, from, to, reloadKey])
+
+  // Se sigue usando como onRefresh en las tarjetas (tras editar / copiar / borrar)
+  function load() { setReloadKey(k => k + 1) }
 
   const activeBarbers   = barbers.filter(b =>
     drafts.some(d => d.barber_id === b.id) || sales.some(s => s.barber_id === b.id)
@@ -1056,6 +1065,12 @@ export default function DraftsPage() {
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : loadError ? (
+        <div className="card flex flex-col items-center text-center gap-3 py-10">
+          <AlertTriangle size={22} className="text-amber-400" />
+          <p className="text-cream/70 text-sm">No se pudo cargar. Puede ser la conexión.</p>
+          <button onClick={load} className="btn-outline-gold text-sm">Reintentar</button>
         </div>
       ) : (
         showDrafts ? compareView : (
