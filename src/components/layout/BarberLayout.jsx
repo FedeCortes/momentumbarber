@@ -1,6 +1,6 @@
 import { Outlet, useNavigate, NavLink } from 'react-router-dom'
 import { LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle } from 'lucide-react'
-import BarberPole from '../ui/BarberPole'
+import BarberPoleMark from '../ui/BarberPoleMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -54,12 +54,7 @@ export default function BarberLayout() {
       >
         {/* Logo + nombre */}
         <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: 'rgb(var(--gold))', boxShadow: 'var(--sh-gold)' }}
-          >
-            <BarberPole size={18} strokeWidth={2} style={{ color: 'rgb(var(--ink))' }} />
-          </div>
+          <BarberPoleMark size={36} className="shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           <div>
             <p className="font-display text-sm font-semibold text-cream leading-tight">
               {tenant?.name || 'Momentum'}

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Sun, Moon } from 'lucide-react'
-import BarberPole from '../../components/ui/BarberPole'
+import BarberPoleMark from '../../components/ui/BarberPoleMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import { supabase } from '../../lib/supabase'
@@ -56,9 +56,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="flex flex-col items-center mb-10">
-          <div className="w-16 h-16 rounded-2xl bg-gold/12 border border-gold/25 flex items-center justify-center mb-5 shadow-gold-md">
-            <BarberPole size={30} strokeWidth={1.9} className="text-gold" />
-          </div>
+          <BarberPoleMark size={60} className="mb-5 shadow-[0_10px_30px_rgba(0,0,0,0.45)]" />
           <h1 className="font-display text-4xl text-cream tracking-tight">Momentum</h1>
           <p className="text-[11px] text-gold/60 uppercase tracking-widest font-semibold mt-1.5">Barber Management</p>
           <div className="barber-rule mt-4 w-full max-w-[10rem]" aria-hidden="true">

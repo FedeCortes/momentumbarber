@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { LayoutDashboard, LogOut, Sun, Moon } from 'lucide-react'
-import BarberPole from '../ui/BarberPole'
+import BarberPoleMark from '../ui/BarberPoleMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -21,10 +21,7 @@ export default function RootLayout() {
       <header className="bg-dark-200 border-b border-dark-400/40 px-4 sm:px-8 py-3 flex items-center justify-between sticky top-0 z-30"
               style={{ boxShadow: 'var(--sh-card)' }}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-               style={{ background: 'rgb(var(--gold))' }}>
-            <BarberPole size={17} strokeWidth={2} style={{ color: 'rgb(var(--ink))' }} />
-          </div>
+          <BarberPoleMark size={32} className="shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           <span className="font-display text-base font-semibold text-cream">Momentum</span>
           <span className="text-cream/25 text-xs hidden sm:block">ROOT</span>
         </div>

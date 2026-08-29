@@ -276,10 +276,10 @@ html.light .input-dark::placeholder {
 
 /* btn-ghost en light */
 html.light .btn-ghost {
-  color: rgb(var(--text-base) / 0.45);
+  color: rgb(var(--text-base) / 0.62);
 }
 html.light .btn-ghost:hover {
-  color: rgb(var(--text-base) / 0.80);
+  color: rgb(var(--text-base) / 0.88);
   background: rgb(var(--surface-border) / 0.08);
 }
 
@@ -287,6 +287,53 @@ html.light .btn-ghost:hover {
 html.light .page-eyebrow {
   color: rgb(var(--gold));
 }
+
+/* ───────────────────────────────────────────────────────────
+   LEGIBILIDAD EN MODO CLARO
+   El texto atenuado (text-cream/30, /40, …) se calcula como
+   negro con poca opacidad → sobre blanco queda lavado.
+   Acá se le sube el "peso" visual sin tocar el modo oscuro.
+─────────────────────────────────────────────────────────── */
+
+/* Render de fuente: en fondo claro el suavizado gris adelgaza el texto */
+html.light body {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+/* Texto crema atenuado → más oscuro y presente en claro */
+html.light .text-cream\/15 { color: rgb(var(--text-base) / 0.38); }
+html.light .text-cream\/20 { color: rgb(var(--text-base) / 0.44); }
+html.light .text-cream\/25 { color: rgb(var(--text-base) / 0.50); }
+html.light .text-cream\/28 { color: rgb(var(--text-base) / 0.52); }
+html.light .text-cream\/30 { color: rgb(var(--text-base) / 0.55); }
+html.light .text-cream\/35 { color: rgb(var(--text-base) / 0.60); }
+html.light .text-cream\/40 { color: rgb(var(--text-base) / 0.64); }
+html.light .text-cream\/45 { color: rgb(var(--text-base) / 0.68); }
+html.light .text-cream\/50 { color: rgb(var(--text-base) / 0.72); }
+html.light .text-cream\/55 { color: rgb(var(--text-base) / 0.76); }
+html.light .text-cream\/60 { color: rgb(var(--text-base) / 0.80); }
+html.light .text-cream\/65 { color: rgb(var(--text-base) / 0.83); }
+html.light .text-cream\/70 { color: rgb(var(--text-base) / 0.86); }
+html.light .text-cream\/75 { color: rgb(var(--text-base) / 0.90); }
+html.light .text-cream\/80 { color: rgb(var(--text-base) / 0.92); }
+html.light .text-cream\/85 { color: rgb(var(--text-base) / 0.95); }
+
+/* Dorado atenuado → un punto más saturado/oscuro para que se lea */
+html.light .text-gold\/40 { color: rgb(var(--gold) / 0.62); }
+html.light .text-gold\/50 { color: rgb(var(--gold) / 0.72); }
+html.light .text-gold\/60 { color: rgb(var(--gold) / 0.80); }
+html.light .text-gold\/65 { color: rgb(var(--gold) / 0.84); }
+html.light .text-gold\/70 { color: rgb(var(--gold) / 0.88); }
+html.light .text-gold\/80 { color: rgb(var(--gold) / 0.95); }
+
+/* Clases de componente que fijan el color vía @apply (no las alcanza lo de arriba) */
+html.light .section-sub { color: rgb(var(--text-base) / 0.76); }
+html.light .label,
+html.light .stat-label  { color: rgb(var(--text-base) / 0.66); font-weight: 700; }
+html.light .section-sub,
+html.light .label,
+html.light .stat-label { letter-spacing: 0.01em; }
 
 /* Dividers en light – más definidos */
 html.light .divider {

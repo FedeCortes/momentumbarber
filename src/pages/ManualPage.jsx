@@ -6,7 +6,7 @@ import {
   AlertTriangle, Sparkles, Check, MessageCircle, Percent, ArrowRight, Rocket,
   Boxes, BookOpen,
 } from 'lucide-react'
-import BarberPole from '../components/ui/BarberPole'
+import BarberPoleMark from '../components/ui/BarberPoleMark'
 import { useAuth } from '../context/AuthContext'
 
 const setupSteps = [
@@ -166,10 +166,7 @@ export default function ManualPage({ compact = false }) {
   return (
     <div className="pb-8">
       <div className="flex items-center gap-2.5 mb-3">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-             style={{ background: 'rgb(var(--gold))', boxShadow: 'var(--sh-gold)' }}>
-          <BarberPole size={19} strokeWidth={2} style={{ color: 'rgb(var(--ink))' }} />
-        </div>
+        <BarberPoleMark size={36} className="shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
         <div>
           <p className="page-eyebrow mb-0">Ayuda</p>
           <h1 className="section-title leading-tight">Manual</h1>

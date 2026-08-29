@@ -5,7 +5,7 @@ import {
   ChevronDown, Sun, MoreHorizontal, HelpCircle
 } from 'lucide-react'
 import { useState } from 'react'
-import BarberPole from '../ui/BarberPole'
+import BarberPoleMark from '../ui/BarberPoleMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -94,10 +94,7 @@ export default function AdminLayout() {
       <header className="bg-dark-200 border-b border-dark-400/40 px-4 py-3 flex items-center justify-between sticky top-0 z-30"
               style={{ boxShadow: 'var(--sh-card)' }}>
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-               style={{ background: 'rgb(var(--gold))', boxShadow: 'var(--sh-gold)' }}>
-            <BarberPole size={17} strokeWidth={2} style={{ color: 'rgb(var(--ink))' }} />
-          </div>
+          <BarberPoleMark size={32} className="shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           <div>
             <p className="font-display text-sm font-semibold text-cream leading-tight">{tenant?.name || 'Momentum'}</p>
             <p className="text-[10px] text-cream/40 uppercase tracking-wider font-medium">{role}</p>
