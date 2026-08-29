@@ -5,9 +5,10 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesByBarber } from '../../lib/earnings'
+import { applyStockDelta, checkStock } from '../../lib/stock'
 import toast from 'react-hot-toast'
 
-function ItemPicker({ items, selected, onToggle, commissionOf }) {
+function ItemPicker({ items, selected, onToggle, commissionOf, stockOf }) {
   if (items.length === 0) return (
     <p className="text-cream/30 text-xs text-center py-2">Sin ítems configurados</p>
   )
@@ -16,11 +17,14 @@ function ItemPicker({ items, selected, onToggle, commissionOf }) {
       {items.map(item => {
         const qty = selected[item.id] || 0
         const isSelected = qty > 0
+        const stock = stockOf ? stockOf(item) : null   // número | null (null = no controlar)
+        const out = stock != null && stock <= 0
+        const atMax = stock != null && qty >= stock
         return (
           <div
             key={item.id}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
-              isSelected ? 'border-gold bg-gold/8' : 'border-dark-400 hover:border-dark-500'
+              out ? 'border-dark-400/50 opacity-50' : isSelected ? 'border-gold bg-gold/8' : 'border-dark-400 hover:border-dark-500'
             }`}
           >
             <button
@@ -32,11 +36,16 @@ function ItemPicker({ items, selected, onToggle, commissionOf }) {
             >
               <Minus size={12} />
             </button>
-            <button onClick={() => onToggle(item, 1)} className="flex-1 text-left min-w-0">
+            <button onClick={() => !atMax && onToggle(item, 1)} disabled={atMax} className="flex-1 text-left min-w-0">
               <span className={`text-sm font-medium ${isSelected ? 'text-cream' : 'text-cream/70'}`}>{item.name}</span>
               {qty > 1 && <span className="text-gold text-xs ml-2">×{qty}</span>}
               {commissionOf?.(item) && (
                 <span className="ml-2 align-middle inline-block"><CommissionBadge {...commissionOf(item)} /></span>
+              )}
+              {stock != null && (
+                <span className={`ml-2 text-[11px] ${out || stock - qty <= 0 ? 'text-red-400' : 'text-emerald-400/80'}`}>
+                  {out ? 'Sin stock' : `queda ${stock - qty}`}
+                </span>
               )}
             </button>
             <span className={`text-sm shrink-0 ${isSelected ? 'text-gold' : 'text-cream/40'}`}>
@@ -44,7 +53,8 @@ function ItemPicker({ items, selected, onToggle, commissionOf }) {
             </span>
             <button
               onClick={() => onToggle(item, 1)}
-              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors shrink-0 ${
+              disabled={atMax}
+              className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors shrink-0 disabled:opacity-30 ${
                 isSelected ? 'bg-gold text-dark' : 'bg-dark-300 text-cream/60 hover:bg-dark-400'
               }`}
             >
@@ -67,7 +77,7 @@ function ShopBadge() {
 }
 
 export default function SalesPage() {
-  const { tenant } = useAuth()
+  const { tenant, stockEnabled } = useAuth()
   const [tab, setTab] = useState('venta') // 'venta' | 'consumo'
   const [barbers, setBarbers] = useState([])
   const [services, setServices] = useState([])
@@ -159,6 +169,11 @@ export default function SalesPage() {
   const surchargeAmt  = surchargePct > 0 ? Math.round(baseTotal * surchargePct / 100) : 0
   const grandTotal    = baseTotal + tipAmt + surchargeAmt
 
+  // Stock disponible de un ítem (null = no controlar / sistema apagado)
+  const stockFn = stockEnabled
+    ? (item) => (Number.isFinite(Number(item?.stock)) ? Number(item.stock) : null)
+    : undefined
+
   function buildItems(sel, catalog, type) {
     return Object.entries(sel).map(([id, qty]) => {
       const item = catalog.find(i => i.id === id)
@@ -189,8 +204,14 @@ export default function SalesPage() {
         purchase_date: format(new Date(), 'yyyy-MM-dd'),
       }))
 
+      if (stockEnabled) {
+        const bad = await checkStock(items)
+        if (bad.length) { setConsLoading(false); return toast.error(`Sin stock: ${bad.map(b => `${b.name} (quedan ${b.stock})`).join(', ')}`) }
+      }
+
       const { error } = await supabase.from('barber_purchases').insert(items)
       if (error) throw error
+      if (stockEnabled) await applyStockDelta(items, -1)
       toast.success('¡Consumo registrado!')
 
       setConsSaved(true)
@@ -223,6 +244,11 @@ export default function SalesPage() {
         ...buildItems(selDrinks, drinks, 'drink'),
       ]
 
+      if (stockEnabled) {
+        const bad = await checkStock(items)
+        if (bad.length) { setLoading(false); return toast.error(`Sin stock: ${bad.map(b => `${b.name} (quedan ${b.stock})`).join(', ')}`) }
+      }
+
       const { data: sale, error } = await supabase.from('sales').insert({
         tenant_id: tenant.id,
         barber_id: selectedBarber || null,
@@ -238,6 +264,7 @@ export default function SalesPage() {
       }).select().single()
       if (error) throw error
       if (items.length) await supabase.from('sale_items').insert(items.map(i => ({ ...i, sale_id: sale.id })))
+      if (stockEnabled) await applyStockDelta(items, -1)
       toast.success('¡Venta registrada!')
 
       setSaved(true)
@@ -319,7 +346,7 @@ export default function SalesPage() {
                 <span className="text-violet-300 text-sm">${calcTotal(consProducts, barberProducts).toLocaleString('es-AR')}</span>
               )}
             </div>
-            <ItemPicker items={barberProducts} selected={consProducts} onToggle={(item, d) => toggle(setConsProducts, item, d)} />
+            <ItemPicker items={barberProducts} selected={consProducts} onToggle={(item, d) => toggle(setConsProducts, item, d)} stockOf={stockFn} />
           </div>
 
           <div className="card mb-3">
@@ -329,7 +356,7 @@ export default function SalesPage() {
                 <span className="text-violet-300 text-sm">${calcTotal(consDrinks, barberDrinks).toLocaleString('es-AR')}</span>
               )}
             </div>
-            <ItemPicker items={barberDrinks} selected={consDrinks} onToggle={(item, d) => toggle(setConsDrinks, item, d)} />
+            <ItemPicker items={barberDrinks} selected={consDrinks} onToggle={(item, d) => toggle(setConsDrinks, item, d)} stockOf={stockFn} />
           </div>
 
           <div className="fixed bottom-[calc(4.5rem_+_env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 md:relative md:bottom-auto md:z-auto bg-dark-200 border-t border-dark-300 md:border md:rounded-xl p-3 sm:p-4 md:card">
@@ -456,7 +483,7 @@ export default function SalesPage() {
         </button>
         {showVitrina && (
           <div className="mt-3">
-            <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} />
+            <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} stockOf={stockFn} />
           </div>
         )}
       </div>
@@ -475,7 +502,7 @@ export default function SalesPage() {
         </button>
         {showBebidas && (
           <div className="mt-3">
-            <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} />
+            <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn} />
           </div>
         )}
       </div>

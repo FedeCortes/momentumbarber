@@ -1,20 +1,83 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, ChevronUp, Lock } from 'lucide-react'
+import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, ChevronUp, Lock, Boxes, ToggleLeft, ToggleRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { stockLevel } from '../../lib/stock'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import toast from 'react-hot-toast'
 
-function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false }) {
+// Colores por estado de stock frente al punto de reposición
+const STOCK_UI = {
+  out: { text: 'text-red-400',      border: '!border-red-400/60',     label: 'Sin stock' },
+  low: { text: 'text-red-400',      border: '!border-red-400/60',     label: 'Reponer' },
+  ok:  { text: 'text-emerald-400',  border: '!border-emerald-400/45', label: 'Ok' },
+}
+
+// Control rápido de unidades en la lista del catálogo (solo si el stock está activo)
+function StockControl({ item, tableName, onChange }) {
+  const [val, setVal] = useState(String(item.stock ?? 0))
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { setVal(String(item.stock ?? 0)) }, [item.stock])
+
+  const min = Number(item.min_stock) || 0
+  const cur = Math.max(0, Math.round(Number(val) || 0))
+  const ui = STOCK_UI[stockLevel(cur, min)]
+
+  async function commit(next) {
+    const n = Math.max(0, Math.round(Number(next) || 0))
+    setVal(String(n))
+    if (n === (Number(item.stock) || 0)) return
+    setSaving(true)
+    const { error } = await supabase.from(tableName).update({ stock: n }).eq('id', item.id)
+    setSaving(false)
+    if (error) return toast.error(error.message)
+    onChange?.()
+  }
+
+  return (
+    <div className="flex items-center gap-2 w-full mt-1">
+      <button
+        onClick={() => commit(cur - 1)}
+        disabled={saving || cur === 0}
+        className="w-7 h-7 rounded-md bg-dark-300 text-cream/60 flex items-center justify-center hover:bg-dark-400 disabled:opacity-30 shrink-0"
+      >
+        <Minus size={13} />
+      </button>
+      <input
+        type="number" min="0" inputMode="numeric"
+        className={`input-dark w-16 py-1 text-sm text-center ${ui.border} ${ui.text}`}
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onBlur={e => commit(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+      />
+      <button
+        onClick={() => commit(cur + 1)}
+        disabled={saving}
+        className="w-7 h-7 rounded-md bg-dark-300 text-cream/60 flex items-center justify-center hover:bg-dark-400 disabled:opacity-30 shrink-0"
+      >
+        <Plus size={13} />
+      </button>
+      <span className={`text-xs ml-1 ${ui.text}`}>
+        {cur <= 0 ? 'Sin stock' : cur <= min ? `Quedan ${cur} · reponer` : `Quedan ${cur}`}
+      </span>
+      <span className="text-cream/25 text-xs ml-auto shrink-0">mín. {min}</span>
+    </div>
+  )
+}
+
+function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false }) {
   const [items, setItems] = useState([])
   const [quickName, setQuickName] = useState('')
   const [quickPrice, setQuickPrice] = useState('')
   const [quickBarberPrice, setQuickBarberPrice] = useState('')
+  const [quickStock, setQuickStock] = useState('')
   const [adding, setAdding] = useState(false)
   const [editId, setEditId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editBarberPrice, setEditBarberPrice] = useState('')
+  const [editMinStock, setEditMinStock] = useState('')
   const [deleteId, setDeleteId] = useState(null)
   const nameRef = useRef(null)
   const priceRef = useRef(null)
@@ -34,6 +97,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       tenant_id: tenantId,
       ...(showPrice ? { price: Number(quickPrice) || 0 } : {}),
       ...(showBarberPrice ? { barber_price: quickBarberPrice === '' ? null : Number(quickBarberPrice) } : {}),
+      ...(showStock ? { stock: Number(quickStock) || 0 } : {}),
     }
     const { error } = await supabase.from(tableName).insert(payload)
     setAdding(false)
@@ -41,6 +105,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
     setQuickName('')
     setQuickPrice('')
     setQuickBarberPrice('')
+    setQuickStock('')
     nameRef.current?.focus()
     load()
   }
@@ -54,6 +119,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
     setEditName(item.name)
     setEditPrice(item.price ?? '')
     setEditBarberPrice(item.barber_price ?? '')
+    setEditMinStock(item.min_stock ?? '')
   }
 
   async function saveEdit(item) {
@@ -62,6 +128,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       name: editName.trim(),
       ...(showPrice ? { price: Number(editPrice) || 0 } : {}),
       ...(showBarberPrice ? { barber_price: editBarberPrice === '' ? null : Number(editBarberPrice) } : {}),
+      ...(showStock ? { min_stock: Number(editMinStock) || 0 } : {}),
     }
     await supabase.from(tableName).update(payload).eq('id', item.id)
     setEditId(null)
@@ -112,6 +179,17 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
             onKeyDown={handleKeyDown}
           />
         )}
+        {showStock && (
+          <input
+            type="number"
+            min="0"
+            className="input-dark w-20"
+            placeholder="Stock"
+            value={quickStock}
+            onChange={e => setQuickStock(e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        )}
         <button
           onClick={quickAdd}
           disabled={adding || !quickName.trim()}
@@ -122,6 +200,11 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       </div>
       {showBarberPrice && (
         <p className="text-cream/30 text-xs -mt-3 mb-4">Precio barbero: lo que paga un barbero por consumo propio. Vacío = usa el precio normal.</p>
+      )}
+      {showStock && (
+        <p className={`text-cream/30 text-xs mb-4 ${showBarberPrice ? '' : '-mt-3'}`}>
+          Stock: unidades que hay ahora (ajustables con − / +). Tocá el lápiz para fijar el <span className="text-cream/45">stock mínimo</span> (punto de reposición): al llegar a ese número o menos, queda en rojo.
+        </p>
       )}
 
       {/* Lista */}
@@ -159,6 +242,17 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                       onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
                     />
                   )}
+                  {showStock && (
+                    <input
+                      type="number"
+                      min="0"
+                      className="input-dark w-28 py-1 text-sm"
+                      placeholder="Stock mínimo"
+                      value={editMinStock}
+                      onChange={e => setEditMinStock(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                    />
+                  )}
                   <button onClick={() => saveEdit(item)} className="text-emerald-400 hover:text-emerald-300 p-1">
                     <Check size={16} />
                   </button>
@@ -187,6 +281,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                       <Trash2 size={14} />
                     </button>
                   </div>
+                  {showStock && <StockControl item={item} tableName={tableName} onChange={load} />}
                 </>
               )}
             </div>
@@ -350,11 +445,25 @@ function PaymentMethodSection({ tenantId }) {
 }
 
 export default function ConfigPage() {
-  const { tenant } = useAuth()
+  const { tenant, stockEnabled, setStockEnabled } = useAuth()
   const [adminPass, setAdminPass] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [savingPass, setSavingPass] = useState(false)
   const [securityOpen, setSecurityOpen] = useState(false)
+  const [savingStock, setSavingStock] = useState(false)
+
+  async function toggleStock() {
+    const next = !stockEnabled
+    setSavingStock(true)
+    const { error } = await supabase
+      .from('tenant_config')
+      .update({ stock_enabled: next, updated_at: new Date().toISOString() })
+      .eq('tenant_id', tenant.id)
+    setSavingStock(false)
+    if (error) return toast.error('No se pudo guardar. Falta correr la migración de stock en Supabase.')
+    setStockEnabled(next)
+    toast.success(next ? 'Control de stock activado' : 'Control de stock desactivado')
+  }
 
   async function handleSaveAdminPass() {
     if (!adminPass || adminPass.length < 4) return toast.error('La contraseña debe tener al menos 4 caracteres')
@@ -376,9 +485,31 @@ export default function ConfigPage() {
       <h1 className="section-title mb-1">Configuración</h1>
       <p className="section-sub mb-6">Catálogos y ajustes de {tenant.name}</p>
 
+      {/* ── Control de stock ── */}
+      <div className="card mb-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Boxes size={18} className="text-cream/40 mt-0.5 shrink-0" />
+            <div>
+              <h3 className="font-display text-lg text-cream">Control de stock</h3>
+              <p className="text-cream/40 text-xs mt-1 max-w-md leading-relaxed">
+                Llevá el inventario de productos y bebidas: cargás cuántas unidades hay, se descuenta
+                al registrar la venta oficial, ves cuánto queda al vender y no se puede vender algo sin stock.
+                {' '}Desactivado, se ignora por completo.
+              </p>
+            </div>
+          </div>
+          <button onClick={toggleStock} disabled={savingStock} className="shrink-0 mt-0.5 disabled:opacity-40" title={stockEnabled ? 'Desactivar' : 'Activar'}>
+            {stockEnabled
+              ? <ToggleRight size={32} className="text-emerald-400" />
+              : <ToggleLeft size={32} className="text-cream/30" />}
+          </button>
+        </div>
+      </div>
+
       <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
-      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice />
-      <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice showBarberPrice />
+      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} />
+      <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} />
       <CatalogSection title="Pagadores" tableName="expense_payers" tenantId={tenant.id} showPrice={false} />
       <PaymentMethodSection tenantId={tenant.id} />
 

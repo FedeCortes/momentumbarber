@@ -8,6 +8,7 @@ import Modal from '../../components/ui/Modal'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import { splitServices, buildServiceItems, groupByPct, servicePct, hasCustomPct, isServiceEnabled, overridesByBarber } from '../../lib/earnings'
+import { applyStockDelta } from '../../lib/stock'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -36,6 +37,7 @@ function ItemLine({ it, barber }) {
 
 // ── Borrador — solo referencia, con copiado a oficial y edición/borrado para admin ──
 function DraftRow({ draft, barbers, paymentMethods, barberSvcs, onChange, showDate, isAdmin, onDelete, compact }) {
+  const { stockEnabled } = useAuth()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState(null)
   const [working, setWorking] = useState(false)
@@ -108,6 +110,7 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, onChange, showDa
           }))
         )
       }
+      if (stockEnabled) await applyStockDelta(draftItems || [], -1)
       toast.success('Venta oficial creada')
       onChange?.()
     } catch (e) {
@@ -452,6 +455,7 @@ function EditItemPicker({ items, selected, onToggle, commissionOf }) {
 
 // ── Venta oficial — con edición/borrado para admin ────────────────────────────
 function SaleRow({ sale, barbers, paymentMethods, barberSvcs, isAdmin, onRefresh, showDate, compact }) {
+  const { stockEnabled } = useAuth()
   const [open, setOpen]         = useState(false)
   const [items, setItems]       = useState(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -577,8 +581,20 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, isAdmin, onRefresh
         }),
       ]
 
+      // Ajuste de stock: repongo lo viejo y descuento lo nuevo (efecto neto = diferencia)
+      let oldItems = null
+      if (stockEnabled) {
+        const { data } = await supabase.from('sale_items').select('item_type, item_id, quantity').eq('sale_id', sale.id)
+        oldItems = data || []
+      }
+
       await supabase.from('sale_items').delete().eq('sale_id', sale.id)
       if (newItems.length) await supabase.from('sale_items').insert(newItems)
+
+      if (stockEnabled) {
+        await applyStockDelta(oldItems, +1)
+        await applyStockDelta(newItems, -1)
+      }
 
       toast.success('Venta actualizada')
       setEditOpen(false)
@@ -592,8 +608,14 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, isAdmin, onRefresh
   }
 
   async function handleDelete() {
+    let oldItems = null
+    if (stockEnabled) {
+      const { data } = await supabase.from('sale_items').select('item_type, item_id, quantity').eq('sale_id', sale.id)
+      oldItems = data || []
+    }
     await supabase.from('sale_items').delete().eq('sale_id', sale.id)
     await supabase.from('sales').delete().eq('id', sale.id)
+    if (stockEnabled) await applyStockDelta(oldItems, +1)
     toast.success('Venta eliminada')
     setDeleteOpen(false)
     onRefresh()

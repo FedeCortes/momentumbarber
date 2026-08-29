@@ -9,7 +9,7 @@ import CommissionBadge from '../../components/ui/CommissionBadge'
 import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesMap } from '../../lib/earnings'
 import toast from 'react-hot-toast'
 
-function ItemPicker({ items, selected, onToggle, commissionOf }) {
+function ItemPicker({ items, selected, onToggle, commissionOf, stockOf }) {
   if (items.length === 0) return (
     <p className="text-cream/30 text-xs text-center py-3">Sin ítems disponibles</p>
   )
@@ -18,11 +18,14 @@ function ItemPicker({ items, selected, onToggle, commissionOf }) {
       {items.map(item => {
         const qty = selected[item.id] || 0
         const on  = qty > 0
+        const stock = stockOf ? stockOf(item) : null
+        const out   = stock != null && stock <= 0
+        const atMax = stock != null && qty >= stock
         return (
           <div
             key={item.id}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl border transition-all ${
-              on ? 'border-gold/55 bg-gold/8' : 'border-dark-400/60 bg-dark-300/25'
+              out ? 'border-dark-400/40 opacity-50' : on ? 'border-gold/55 bg-gold/8' : 'border-dark-400/60 bg-dark-300/25'
             }`}
           >
             <button
@@ -35,10 +38,15 @@ function ItemPicker({ items, selected, onToggle, commissionOf }) {
               <Minus size={12} />
             </button>
 
-            <button onClick={() => onToggle(item, 1)} className="flex-1 text-left min-w-0">
+            <button onClick={() => !atMax && onToggle(item, 1)} disabled={atMax} className="flex-1 text-left min-w-0">
               <p className={`text-sm font-medium leading-tight ${on ? 'text-cream' : 'text-cream/60'}`}>
                 {item.name}
                 {qty > 1 && <span className="ml-1.5 text-gold text-xs font-semibold">×{qty}</span>}
+                {stock != null && (
+                  <span className={`ml-2 text-[11px] font-semibold ${out || stock - qty <= 0 ? 'text-red-400' : 'text-emerald-400/80'}`}>
+                    {out ? 'Sin stock' : `queda ${stock - qty}`}
+                  </span>
+                )}
               </p>
               {commissionOf?.(item) && (
                 <span className="inline-block mt-1"><CommissionBadge {...commissionOf(item)} variant="barber" /></span>
@@ -51,7 +59,8 @@ function ItemPicker({ items, selected, onToggle, commissionOf }) {
 
             <button
               onClick={() => onToggle(item, 1)}
-              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-90 ${
+              disabled={atMax}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-90 disabled:opacity-30 ${
                 on ? 'bg-gold text-ink' : 'bg-dark-400/40 text-cream/55'
               }`}
             >
@@ -118,7 +127,7 @@ function TodayDrafts({ barberId, tenantId, paymentMethods, refreshKey }) {
 }
 
 export default function BarberDraftPage() {
-  const { tenant, barberSession } = useAuth()
+  const { tenant, barberSession, stockEnabled } = useAuth()
   const barber = barberSession?.barber
   const [searchParams] = useSearchParams()
   const navigate        = useNavigate()
@@ -227,6 +236,10 @@ export default function BarberDraftPage() {
   const surchargePct  = Number(selectedPm?.surcharge_pct) || 0
   const surchargeAmt  = surchargePct > 0 ? Math.round(baseTotal * surchargePct / 100) : 0
   const grandTotal    = baseTotal + tipAmt + surchargeAmt
+
+  const stockFn = stockEnabled
+    ? (item) => (Number.isFinite(Number(item?.stock)) ? Number(item.stock) : null)
+    : undefined
 
   function buildItems() {
     return [
@@ -390,7 +403,7 @@ export default function BarberDraftPage() {
           </button>
           {showVitrina && (
             <div className="mt-2">
-              <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} />
+              <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} stockOf={stockFn} />
             </div>
           )}
         </div>
@@ -413,7 +426,7 @@ export default function BarberDraftPage() {
           </button>
           {showBebidas && (
             <div className="mt-2">
-              <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} />
+              <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn} />
             </div>
           )}
         </div>

@@ -81,6 +81,8 @@ create table public.products (
   name          text not null,
   price         numeric(10,2) not null default 0,
   barber_price  numeric(10,2), -- precio especial cuando lo compra un barbero (null = usa price)
+  stock         integer not null default 0,  -- control de stock (si tenant_config.stock_enabled)
+  min_stock     integer not null default 0,  -- punto de reposición: <= => se marca en rojo
   is_active     boolean default true,
   created_at    timestamptz default now()
 );
@@ -94,6 +96,8 @@ create table public.drinks (
   name          text not null,
   price         numeric(10,2) not null default 0,
   barber_price  numeric(10,2), -- precio especial cuando lo compra un barbero (null = usa price)
+  stock         integer not null default 0,  -- control de stock (si tenant_config.stock_enabled)
+  min_stock     integer not null default 0,  -- punto de reposición: <= => se marca en rojo
   is_active     boolean default true,
   created_at    timestamptz default now()
 );
@@ -230,6 +234,7 @@ create table public.expenses (
 create table public.tenant_config (
   tenant_id       uuid primary key references public.tenants(id) on delete cascade,
   admin_password  text not null default 'admin123',
+  stock_enabled   boolean not null default false,  -- prende/apaga todo el control de stock
   updated_at      timestamptz default now()
 );
 
@@ -265,6 +270,21 @@ create or replace function public.my_role()
 returns text language sql stable security definer as $$
   select role from public.profiles where id = auth.uid()
 $$;
+
+-- Helper: sumar / restar stock de forma atómica (control de stock opcional)
+create or replace function public.adjust_stock(p_item_type text, p_item_id uuid, p_delta integer)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if p_item_type = 'product' then
+    update public.products set stock = greatest(0, coalesce(stock, 0) + p_delta)
+     where id = p_item_id and tenant_id = public.my_tenant_id();
+  elsif p_item_type = 'drink' then
+    update public.drinks set stock = greatest(0, coalesce(stock, 0) + p_delta)
+     where id = p_item_id and tenant_id = public.my_tenant_id();
+  end if;
+end;
+$$;
+grant execute on function public.adjust_stock(text, uuid, integer) to anon, authenticated;
 
 -- TENANTS: root ve todo, admin solo el suyo
 create policy "tenants_root_all"    on public.tenants for all using (public.my_role() = 'root');
