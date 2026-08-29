@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import LoginPage from './pages/auth/LoginPage'
@@ -15,13 +16,16 @@ import ConfigPage from './pages/admin/ConfigPage'
 import SalesPage from './pages/admin/SalesPage'
 import DraftsPage from './pages/admin/DraftsPage'
 import DayClosingPage from './pages/admin/DayClosingPage'
-import StatsPage from './pages/admin/StatsPage'
 import ExpensesPage from './pages/admin/ExpensesPage'
 
 import BarberDraftPage from './pages/barber/BarberDraftPage'
 import BarberHistoryPage from './pages/barber/BarberHistoryPage'
 
 import ManualPage from './pages/ManualPage'
+
+// Solo Estadísticas se carga aparte: se lleva recharts (~370 kB), que no hace
+// falta descargar para usar el resto de la app.
+const StatsPage = lazy(() => import('./pages/admin/StatsPage'))
 
 function LoadingScreen() {
   return (
@@ -63,6 +67,7 @@ export default function App() {
   if (loading) return <LoadingScreen />
 
   return (
+    <Suspense fallback={<LoadingScreen />}>
     <Routes>
       <Route path="/login" element={
         session
@@ -112,5 +117,6 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   )
 }
