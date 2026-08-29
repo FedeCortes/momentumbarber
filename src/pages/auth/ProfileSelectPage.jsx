@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Shield, Scissors, Eye, EyeOff, ChevronLeft, Lock, Sun, Moon } from 'lucide-react'
+import { Shield, Scissors, Eye, EyeOff, ChevronLeft, Lock, Check, Sun, Moon } from 'lucide-react'
 import BarberPoleMark from '../../components/ui/BarberPoleMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -8,7 +8,7 @@ import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function ProfileSelectPage() {
-  const { tenant, profile, setBarber, signOut, clearBarberSession } = useAuth()
+  const { tenant, profile, setBarber, signOut, clearBarberSession, rememberProfileUnlock, isProfileUnlocked } = useAuth()
   const { theme, toggle } = useTheme()
   const navigate = useNavigate()
   const [mode, setMode] = useState(null)
@@ -26,14 +26,29 @@ export default function ProfileSelectPage() {
       .then(({ data }) => setBarbers(data || []))
   }, [tenant?.id])
 
+  const adminUnlocked = isProfileUnlocked('admin', tenant?.id)
+  const barberUnlocked = b => isProfileUnlocked('barber', b?.id)
+
+  // Ya entró como admin en este equipo → adentro sin pedir la contraseña
+  function enterAdmin() {
+    clearBarberSession()
+    navigate('/admin')
+  }
+
+  function enterBarber(b) {
+    rememberProfileUnlock('barber', b.id)
+    setBarber(b)
+    navigate('/barber')
+  }
+
   async function handleAdminLogin() {
     if (!adminPass) return toast.error('Ingresá la contraseña de admin')
     setLoading(true)
     try {
       const { data: cfg } = await supabase.from('tenant_config').select('admin_password').eq('tenant_id', tenant.id).single()
       if (!cfg || cfg.admin_password !== adminPass) { toast.error('Contraseña incorrecta'); return }
-      clearBarberSession()
-      navigate('/admin')
+      rememberProfileUnlock('admin', tenant.id)
+      enterAdmin()
     } finally {
       setLoading(false)
     }
@@ -43,12 +58,12 @@ export default function ProfileSelectPage() {
     if (!selectedBarber) return toast.error('Seleccioná tu nombre')
     setLoading(true)
     try {
-      if (selectedBarber.password_hash) {
+      const needsPin = selectedBarber.password_hash && !barberUnlocked(selectedBarber)
+      if (needsPin) {
         if (!barberPass) { toast.error('Este barbero tiene contraseña'); return }
         if (selectedBarber.password_hash !== barberPass) { toast.error('Contraseña incorrecta'); return }
       }
-      setBarber(selectedBarber)
-      navigate('/barber')
+      enterBarber(selectedBarber)
     } finally {
       setLoading(false)
     }
@@ -85,7 +100,7 @@ export default function ProfileSelectPage() {
         {!mode && (
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => setMode('admin')}
+              onClick={() => adminUnlocked ? enterAdmin() : setMode('admin')}
               className="group card-hover flex items-center gap-4 text-left"
             >
               <div className="w-12 h-12 rounded-2xl bg-gold/12 border border-gold/20 flex items-center justify-center shrink-0 group-hover:bg-gold/20 transition-colors">
@@ -93,9 +108,13 @@ export default function ProfileSelectPage() {
               </div>
               <div className="flex-1">
                 <p className="text-cream font-medium">Administrador</p>
-                <p className="text-cream/35 text-xs mt-0.5">Gestión completa de la barbería</p>
+                <p className="text-cream/35 text-xs mt-0.5">
+                  {adminUnlocked ? 'Registrado en este equipo · entrás directo' : 'Gestión completa de la barbería'}
+                </p>
               </div>
-              <ChevronLeft size={16} className="text-cream/20 rotate-180 group-hover:text-gold/50 transition-colors" />
+              {adminUnlocked
+                ? <Check size={16} className="text-emerald-400/70 shrink-0" />
+                : <ChevronLeft size={16} className="text-cream/20 rotate-180 group-hover:text-gold/50 transition-colors" />}
             </button>
 
             <button
@@ -177,7 +196,11 @@ export default function ProfileSelectPage() {
                 {barbers.map(b => (
                   <button
                     key={b.id}
-                    onClick={() => { setSelectedBarber(b); setBarberPass('') }}
+                    onClick={() => {
+                      setBarberPass('')
+                      if (barberUnlocked(b)) { enterBarber(b); return }   // registrado en este equipo
+                      setSelectedBarber(b)
+                    }}
                     className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left ${
                       selectedBarber?.id === b.id
                         ? 'border-gold/50 bg-gold/8 shadow-gold'
@@ -192,13 +215,15 @@ export default function ProfileSelectPage() {
                     <span className={`font-medium text-sm flex-1 ${selectedBarber?.id === b.id ? 'text-cream' : 'text-cream/70'}`}>
                       {b.name}
                     </span>
-                    {b.password_hash && <Lock size={13} className="text-cream/25 shrink-0" />}
+                    {barberUnlocked(b)
+                      ? <Check size={13} className="text-emerald-400/70 shrink-0" />
+                      : b.password_hash && <Lock size={13} className="text-cream/25 shrink-0" />}
                   </button>
                 ))}
               </div>
             )}
 
-            {selectedBarber?.password_hash && (
+            {selectedBarber?.password_hash && !barberUnlocked(selectedBarber) && (
               <div className="relative mb-4">
                 <label className="label">Contraseña</label>
                 <input
