@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Plus, Minus, Clock, ChevronDown, ChevronUp, Store, ArrowLeft, HelpCircle } from 'lucide-react'
+import { Check, Plus, Minus, Clock, ChevronDown, ChevronUp, Store, ArrowLeft, HelpCircle, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesMap } from '../../lib/earnings'
+import { qAll } from '../../lib/query'
 import toast from 'react-hot-toast'
 
 function ItemPicker({ items, selected, onToggle, commissionOf, stockOf }) {
@@ -151,29 +152,40 @@ export default function BarberDraftPage() {
   const [pendingEditItems, setPendingEditItems] = useState(null)
   const [showVitrina, setShowVitrina]   = useState(false)
   const [showBebidas, setShowBebidas]   = useState(false)
+  const [catalogError, setCatalogError] = useState(false)
+  const [catalogKey, setCatalogKey]     = useState(0)
 
-  // Catálogo
+  // Catálogo — con reintento ante fallos de conexión
   useEffect(() => {
     if (!tenant?.id) return
-    Promise.all([
-      supabase.from('services').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('drinks').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('payment_methods').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order'),
-      barber?.id
-        ? supabase.from('barber_services').select('*').eq('barber_id', barber.id)
-        : Promise.resolve({ data: [] }),
-    ]).then(([s, p, d, pm, bs]) => {
-      const ov = overridesMap(bs.data || [])
-      setOverrides(ov)
-      // Solo se muestran los servicios habilitados para este barbero
-      setServices(enabledServices(s.data || [], ov))
-      setProducts(p.data || [])
-      setDrinks(d.data || [])
-      setPaymentMethods(pm.data || [])
-      setCatalogReady(true)
-    })
-  }, [tenant?.id, barber?.id])
+    let alive = true
+    setCatalogError(false)
+    ;(async () => {
+      try {
+        const builds = [
+          x => x.from('services').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+          x => x.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+          x => x.from('drinks').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+          x => x.from('payment_methods').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order'),
+        ]
+        if (barber?.id) builds.push(x => x.from('barber_services').select('*').eq('barber_id', barber.id))
+        const [s, p, d, pm, bs = []] = await qAll(builds)
+        if (!alive) return
+        const ov = overridesMap(bs || [])
+        setOverrides(ov)
+        setServices(enabledServices(s || [], ov))
+        setProducts(p || [])
+        setDrinks(d || [])
+        setPaymentMethods(pm || [])
+        setCatalogReady(true)
+      } catch {
+        if (alive) setCatalogError(true)
+      }
+    })()
+    return () => { alive = false }
+  }, [tenant?.id, barber?.id, catalogKey])
+
+  function retryCatalog() { setCatalogError(false); setCatalogKey(k => k + 1) }
 
   // Cargar borrador para editar
   useEffect(() => {
@@ -325,6 +337,24 @@ export default function BarberDraftPage() {
         <p className="text-cream/40 text-sm mt-2">
           {editId ? 'El registro fue actualizado' : 'Quedó guardado como referencia'}
         </p>
+      </div>
+    )
+  }
+
+  if (catalogError || !catalogReady) {
+    return (
+      <div className="pb-40 pt-6">
+        {catalogError ? (
+          <div className="card flex flex-col items-center text-center gap-3 py-12">
+            <AlertTriangle size={22} className="text-amber-400" />
+            <p className="text-cream/70 text-sm">No se pudo cargar. Puede ser la conexión.</p>
+            <button onClick={retryCatalog} className="btn-outline-gold text-sm">Reintentar</button>
+          </div>
+        ) : (
+          <div className="flex justify-center py-20">
+            <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
       </div>
     )
   }

@@ -6,6 +6,18 @@ import { useAuth } from '../../context/AuthContext'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
+// Reintenta una consulta ante fallos transitorios de red
+async function withRetry(build, tries = 3) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const res = await build()
+      if (!res.error) return res
+    } catch { /* red */ }
+    if (i < tries - 1) await new Promise(r => setTimeout(r, 500 * (i + 1)))
+  }
+  return { data: null, count: 0, error: true }
+}
+
 export default function AdminDashboard() {
   const { tenant } = useAuth()
   const [stats, setStats] = useState({ todaySales: 0, todayTotal: 0, monthTotal: 0, barberCount: 0, todayDrafts: 0, todayShop: 0, monthExpenses: 0 })
@@ -14,29 +26,33 @@ export default function AdminDashboard() {
   const month = format(new Date(), 'yyyy-MM')
 
   const loadStats = useCallback(async () => {
-    const [salesDay, salesMonth, barbers, drafts, expensesMonth] = await Promise.all([
-      supabase.from('sales').select('total, shop_earnings').eq('tenant_id', tenant.id).eq('sale_date', today),
-      supabase.from('sales').select('total').eq('tenant_id', tenant.id).gte('sale_date', month + '-01'),
-      supabase.from('barbers').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('is_active', true),
-      supabase.from('drafts').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('draft_date', today),
-      supabase.from('expenses').select('total_price').eq('tenant_id', tenant.id).gte('expense_date', month + '-01'),
-    ])
+    setLoading(true)
+    try {
+      const [salesDay, salesMonth, barbers, drafts, expensesMonth] = await Promise.all([
+        withRetry(() => supabase.from('sales').select('total, shop_earnings').eq('tenant_id', tenant.id).eq('sale_date', today)),
+        withRetry(() => supabase.from('sales').select('total').eq('tenant_id', tenant.id).gte('sale_date', month + '-01')),
+        withRetry(() => supabase.from('barbers').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('is_active', true)),
+        withRetry(() => supabase.from('drafts').select('id', { count: 'exact' }).eq('tenant_id', tenant.id).eq('draft_date', today)),
+        withRetry(() => supabase.from('expenses').select('total_price').eq('tenant_id', tenant.id).gte('expense_date', month + '-01')),
+      ])
 
-    const todayTotal = (salesDay.data || []).reduce((s, r) => s + Number(r.total), 0)
-    const todayShop  = (salesDay.data || []).reduce((s, r) => s + Number(r.shop_earnings), 0)
-    const monthTotal = (salesMonth.data || []).reduce((s, r) => s + Number(r.total), 0)
-    const monthExpenses = (expensesMonth.data || []).reduce((s, r) => s + Number(r.total_price), 0)
+      const todayTotal = (salesDay.data || []).reduce((s, r) => s + Number(r.total), 0)
+      const todayShop  = (salesDay.data || []).reduce((s, r) => s + Number(r.shop_earnings), 0)
+      const monthTotal = (salesMonth.data || []).reduce((s, r) => s + Number(r.total), 0)
+      const monthExpenses = (expensesMonth.data || []).reduce((s, r) => s + Number(r.total_price), 0)
 
-    setStats({
-      todaySales:    salesDay.data?.length || 0,
-      todayTotal,
-      todayShop,
-      monthTotal,
-      barberCount:  barbers.count || 0,
-      todayDrafts:  drafts.count || 0,
-      monthExpenses,
-    })
-    setLoading(false)
+      setStats({
+        todaySales:    salesDay.data?.length || 0,
+        todayTotal,
+        todayShop,
+        monthTotal,
+        barberCount:  barbers.count || 0,
+        todayDrafts:  drafts.count || 0,
+        monthExpenses,
+      })
+    } finally {
+      setLoading(false)
+    }
   }, [tenant?.id, today, month])
 
   useEffect(() => {

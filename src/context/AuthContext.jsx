@@ -75,11 +75,18 @@ export function AuthProvider({ children }) {
     // Ya está cargado este usuario → no re-consultar (p.ej. en TOKEN_REFRESHED)
     if (!force && loadedUserRef.current === userId) { setLoading(false); return }
     try {
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('*, tenants(*)')
-        .eq('id', userId)
-        .single()
+      // Reintenta ante fallos transitorios de red (si esto no carga, la app
+      // queda inutilizable) — hasta 4 intentos con espera creciente.
+      let prof = null
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const res = await supabase
+          .from('profiles')
+          .select('*, tenants(*)')
+          .eq('id', userId)
+          .maybeSingle()
+        if (!res.error) { prof = res.data; break }
+        if (attempt < 3) await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+      }
 
       if (prof) {
         loadedUserRef.current = userId

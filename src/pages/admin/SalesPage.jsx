@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
-import { Check, Plus, Minus, Store, ChevronDown, ChevronUp } from 'lucide-react'
+import { Check, Plus, Minus, Store, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesByBarber } from '../../lib/earnings'
 import { applyStockDelta, checkStock } from '../../lib/stock'
+import { qAll } from '../../lib/query'
 import toast from 'react-hot-toast'
 
 function ItemPicker({ items, selected, onToggle, commissionOf, stockOf }) {
@@ -84,6 +85,9 @@ export default function SalesPage() {
   const [products, setProducts] = useState([])
   const [drinks, setDrinks] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
+  const [catalogReady, setCatalogReady] = useState(false)
+  const [catalogError, setCatalogError] = useState(false)
+  const [catalogKey, setCatalogKey] = useState(0)
   const [barberSvcs, setBarberSvcs] = useState({})
 
   const [selectedBarber, setSelectedBarber] = useState('')
@@ -107,22 +111,34 @@ export default function SalesPage() {
 
   useEffect(() => {
     if (!tenant?.id) return
-    Promise.all([
-      supabase.from('barbers').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('services').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('drinks').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      supabase.from('payment_methods').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order'),
-      supabase.from('barber_services').select('*').eq('tenant_id', tenant.id),
-    ]).then(([b, s, p, d, pm, bs]) => {
-      setBarbers(b.data || [])
-      setServices(s.data || [])
-      setProducts(p.data || [])
-      setDrinks(d.data || [])
-      setPaymentMethods(pm.data || [])
-      setBarberSvcs(overridesByBarber(bs.data || []))
-    })
-  }, [tenant?.id])
+    let alive = true
+    setCatalogError(false)
+    ;(async () => {
+      try {
+        const [b, s, p, d, pm, bs] = await qAll([
+          x => x.from('barbers').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+          x => x.from('services').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+          x => x.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+          x => x.from('drinks').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+          x => x.from('payment_methods').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order'),
+          x => x.from('barber_services').select('*').eq('tenant_id', tenant.id),
+        ])
+        if (!alive) return
+        setBarbers(b || [])
+        setServices(s || [])
+        setProducts(p || [])
+        setDrinks(d || [])
+        setPaymentMethods(pm || [])
+        setBarberSvcs(overridesByBarber(bs || []))
+        setCatalogReady(true)
+      } catch {
+        if (alive) setCatalogError(true)
+      }
+    })()
+    return () => { alive = false }
+  }, [tenant?.id, catalogKey])
+
+  function retryCatalog() { setCatalogError(false); setCatalogKey(k => k + 1) }
 
   // Elegir barbero (o "solo local"): descarta los servicios que ese barbero no hace
   function chooseBarber(barberId) {
@@ -288,6 +304,26 @@ export default function SalesPage() {
         </div>
         <p className="font-display text-2xl text-cream">{saved ? '¡Venta registrada!' : '¡Consumo registrado!'}</p>
         <p className="text-cream/40 text-sm mt-1">Preparando nuevo registro...</p>
+      </div>
+    )
+  }
+
+  if (catalogError || !catalogReady) {
+    return (
+      <div className="pb-6">
+        <h1 className="section-title mb-1">Nueva venta</h1>
+        <p className="section-sub mb-5">Registro oficial de venta</p>
+        {catalogError ? (
+          <div className="card flex flex-col items-center text-center gap-3 py-10">
+            <AlertTriangle size={22} className="text-amber-400" />
+            <p className="text-cream/70 text-sm">No se pudo cargar. Puede ser la conexión.</p>
+            <button onClick={retryCatalog} className="btn-outline-gold text-sm">Reintentar</button>
+          </div>
+        ) : (
+          <div className="flex justify-center py-16">
+            <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
       </div>
     )
   }
