@@ -35,10 +35,12 @@
 }
 
 html.light {
-  /* Gold – deeper amber for contrast on light backgrounds */
-  --gold:       148 110 18;
-  --gold-light: 178 140 48;
-  --gold-dark:  112 80 6;
+  /* Gold – como RELLENO (botones, chips): suficientemente vivo para que el
+     texto oscuro (ink) encima se lea. Para gold como TEXTO sobre blanco se usa
+     un dorado más oscuro, ver overrides de .text-gold más abajo. */
+  --gold:       194 152 52;
+  --gold-light: 210 172 84;
+  --gold-dark:  150 114 30;
 
   /* ── Light theme surfaces (neutral, clean) ── */
   --surface-page:   230 230 230;
@@ -283,10 +285,64 @@ html.light .btn-ghost:hover {
   background: rgb(var(--surface-border) / 0.08);
 }
 
-/* page-eyebrow en light */
-html.light .page-eyebrow {
-  color: rgb(var(--gold));
-}
+/* ───────────────────────────────────────────────────────────
+   ACENTOS EN MODO CLARO
+   Los amarillos / verdes / rojos / violetas claros (pensados para
+   fondo oscuro) se lavan sobre blanco. Acá se los reemplaza por
+   una versión más oscura, solo en modo claro.
+─────────────────────────────────────────────────────────── */
+
+/* Relleno dorado (chips seleccionados, indicadores): texto SIEMPRE oscuro.
+   Sin esto, "bg-gold text-dark" en claro pinta el texto gris claro sobre dorado. */
+html.light .bg-gold { color: rgb(var(--ink)); }
+
+/* Dorado como TEXTO → miel oscuro, se lee fuerte sobre blanco */
+html.light .text-gold,
+html.light .text-gold\/40, html.light .text-gold\/50,
+html.light .text-gold\/60, html.light .text-gold\/65,
+html.light .text-gold\/70, html.light .text-gold\/80,
+html.light .stat-value,
+html.light .page-eyebrow { color: #7a5a0f; }
+
+/* Ámbar (avisos, warnings) */
+html.light .text-amber-400, html.light .text-amber-500,
+html.light .text-amber-400\/40, html.light .text-amber-400\/50,
+html.light .text-amber-400\/60, html.light .text-amber-400\/80,
+html.light .text-amber-200\/80,
+html.light .badge-pending { color: #96580e; }
+html.light .badge-pending { background: rgb(150 88 14 / 0.12); border-color: rgb(150 88 14 / 0.30); }
+html.light .border-amber-500\/20, html.light .border-amber-500\/40,
+html.light .border-amber-400\/15, html.light .border-amber-400\/20 { border-color: rgb(150 88 14 / 0.35); }
+
+/* Verde (ok, activo, "100% local") */
+html.light .text-emerald-300, html.light .text-emerald-400,
+html.light .text-emerald-500,
+html.light .text-emerald-400\/70, html.light .text-emerald-400\/80,
+html.light .badge-active { color: #0a7a52; }
+html.light .badge-active { background: rgb(10 122 82 / 0.12); border-color: rgb(10 122 82 / 0.30); }
+html.light .border-emerald-500\/20, html.light .border-emerald-400\/20,
+html.light .border-emerald-400\/45, html.light .border-emerald-400\/60 { border-color: rgb(10 122 82 / 0.35); }
+
+/* Rojo (eliminar, error, "sin stock") */
+html.light .text-red-400, html.light .text-red-500,
+html.light .text-red-400\/40, html.light .text-red-400\/50,
+html.light .text-red-400\/55, html.light .text-red-400\/60,
+html.light .text-red-400\/70, html.light .text-red-400\/75,
+html.light .text-red-400\/80, html.light .text-red-400\/85,
+html.light .badge-inactive { color: #cd2b2b; }
+html.light .badge-inactive { background: rgb(205 43 43 / 0.10); border-color: rgb(205 43 43 / 0.28); }
+html.light .border-red-500\/20, html.light .border-red-500\/25,
+html.light .border-red-500\/30, html.light .border-red-400\/60 { border-color: rgb(205 43 43 / 0.4); }
+
+/* Violeta (precio de barbero / consumo) */
+html.light .text-violet-300,
+html.light .text-violet-300\/60, html.light .text-violet-300\/70,
+html.light .text-violet-300\/80 { color: #6d28d9; }
+html.light .border-violet-300\/40, html.light .border-violet-300\/60,
+html.light .border-violet-400\/30 { border-color: rgb(109 40 217 / 0.4); }
+
+/* Azul */
+html.light .text-blue-400, html.light .text-blue-400\/70 { color: #2563eb; }
 
 /* ───────────────────────────────────────────────────────────
    LEGIBILIDAD EN MODO CLARO
