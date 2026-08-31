@@ -62,6 +62,7 @@
     font-size: 16px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
+    overflow-x: clip;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -141,13 +142,26 @@
     background-image: repeating-linear-gradient(135deg, rgba(231,223,205,.025) 0 1px, transparent 1px 6px);
     pointer-events: none;
   }
-  .hero-grid { display: grid; grid-template-columns: 1fr; gap: 2.5rem; align-items: center; position: relative; }
-  @media (min-width: 61rem) { .hero-grid { grid-template-columns: 1.1fr .9fr; gap: 2.5rem; } }
-  .hero h1 { font-size: clamp(2.6rem, 7.5vw, 4.6rem); line-height: .96; margin-block: .6rem .9rem; }
+  /* mobile: apilado simple (nada de grid, así el texto nunca se desborda) */
+  .hero-grid { position: relative; }
+  .hero-grid > .proof { margin-top: 2.4rem; }
+  @media (min-width: 61rem) {
+    .hero-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 2.5rem; align-items: center; }
+    .hero-grid > * { min-width: 0; }
+    .hero-grid > .proof { margin-top: 0; }
+  }
+  .hero h1 { font-size: clamp(2.35rem, 7.2vw, 4.6rem); line-height: .97; margin-block: .6rem .9rem; }
+  .hero h1 br { display: none; }
+  @media (min-width: 34rem) { .hero h1 br { display: inline; } }
   .hero h1 em { font-style: normal; color: var(--gold-bright); }
   .hero p.lede { font-size: 1.1rem; color: var(--muted); max-width: 34rem; }
-  .hero-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 1.8rem; }
+  .hero-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-top: 1.7rem; }
   .hero-cta small { font-family: var(--font-mono); font-size: .74rem; color: var(--muted); max-width: 14rem; }
+
+  .hero-stats { display: flex; gap: 1rem 1.6rem; margin-top: 1.7rem; flex-wrap: wrap; }
+  .hero-stat { min-width: 0; }
+  .hero-stat b { font-family: var(--font-display); font-size: 1.8rem; color: var(--gold-bright); display: block; line-height: 1; white-space: nowrap; }
+  .hero-stat span { font-family: var(--font-mono); font-size: .62rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; display: block; margin-top: .3rem; }
 
   /* side barber pole, desktop-only decoration */
   .pole-decor { display: none; }
@@ -156,9 +170,10 @@
   }
 
   /* phone + receipt mockup */
-  .proof { position: relative; display: flex; justify-content: center; padding-block: 1rem 1.5rem; }
+  .proof { position: relative; display: flex; justify-content: center; padding-block: 1rem 1.5rem; min-width: 0; max-width: 100%; }
+  .proof > * { min-width: 0; flex-shrink: 0; }
   .phone {
-    width: 15.5rem; background: #0B0A08; border-radius: 1.8rem; padding: .55rem;
+    width: 15.5rem; max-width: 100%; background: #0B0A08; border-radius: 1.8rem; padding: .55rem;
     box-shadow: 0 1.5rem 3rem var(--shadow), 0 0 0 1px rgba(0,0,0,.4);
     position: relative; z-index: 2; transform: rotate(-2.5deg);
   }
@@ -172,6 +187,29 @@
   .phone-stat-sub { font-family: var(--font-mono); font-size: .62rem; color: rgba(217,203,174,.35); margin-top: .2rem; }
   .phone-stat-big.gold { color: var(--gold-bright); font-size: 2.1rem; }
   .phone-note { font-family: var(--font-mono); font-size: .58rem; color: rgba(217,203,174,.3); border-top: 1px solid rgba(217,203,174,.1); margin-top: .9rem; padding-top: .7rem; }
+
+  /* phone → pantalla de Cierre */
+  .cl-total-label { font-size: .58rem; text-transform: uppercase; letter-spacing: .09em; font-weight: 700; color: rgba(217,203,174,.5); }
+  .cl-total { font-family: var(--font-display); font-size: 2.3rem; letter-spacing: .02em; color: var(--parchment); display: block; margin-top: .1rem; }
+  .cl-methods { display: flex; gap: .4rem; margin: .75rem 0 .1rem; }
+  .cl-methods span { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: .58rem; line-height: 1.35; text-align: center; background: rgba(217,203,174,.05); border: 1px solid rgba(217,203,174,.1); border-radius: .45rem; padding: .4rem .3rem; color: rgba(217,203,174,.55); }
+  .cl-methods span b { display: block; color: rgba(217,203,174,.8); font-weight: 600; }
+  .cl-sub { font-size: .54rem; text-transform: uppercase; letter-spacing: .11em; font-weight: 700; color: rgba(217,203,174,.4); margin: .9rem 0 .2rem; }
+  .cl-row { display: flex; justify-content: space-between; font-size: .8rem; padding: .3rem 0; border-top: 1px dashed rgba(217,203,174,.12); color: rgba(217,203,174,.78); }
+  .cl-row:first-of-type { border-top: none; }
+  .cl-row b { color: var(--gold-bright); font-weight: 600; }
+  .cl-local { display: flex; justify-content: space-between; align-items: center; margin-top: .7rem; padding: .55rem .65rem; background: rgba(201,150,63,.13); border: 1px solid rgba(201,150,63,.4); border-radius: .55rem; }
+  .cl-local span { font-size: .56rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 700; color: rgba(217,203,174,.72); }
+  .cl-local b { font-family: var(--font-display); font-size: 1.35rem; color: var(--gold-bright); }
+
+  /* aparición al cargar (progresivo: sin JS se ve igual, sin animación) */
+  .proof.in .phone   { animation: proofRise  .7s cubic-bezier(.2,.7,.3,1) both; }
+  .proof.in .receipt { animation: proofRiseR .7s cubic-bezier(.2,.7,.3,1) .18s both; }
+  @keyframes proofRise  { from { opacity: 0; transform: translateY(24px) rotate(-2.5deg); } to { opacity: 1; transform: translateY(0) rotate(-2.5deg); } }
+  @keyframes proofRiseR { from { opacity: 0; transform: translateY(24px) rotate(4deg); }    to { opacity: 1; transform: translateY(0) rotate(4deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .proof.in .phone, .proof.in .receipt { animation: none; }
+  }
 
   .receipt {
     width: 10.5rem; background: var(--parchment); color: #2A2116; font-family: var(--font-mono); font-size: .64rem;
@@ -189,6 +227,12 @@
       linear-gradient(-135deg, var(--parchment) 25%, transparent 25%) 0 0/12px 12px repeat-x;
   }
   @media (max-width: 30rem) { .receipt { margin: -2rem 0 0 -1.6rem; } }
+  /* En pantallas chicas el ticket es redundante con el teléfono → se oculta */
+  @media (max-width: 40rem) {
+    .receipt { display: none; }
+    .phone { transform: rotate(-1.5deg); }
+    .proof { padding-block: .5rem 1rem; }
+  }
 
   /* flourish divider — used once */
   .flourish { display: flex; justify-content: center; padding-block: 1.6rem; color: var(--gold); opacity: .55; }
@@ -314,11 +358,16 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7.5" r="2.3"/><circle cx="17" cy="16.5" r="2.3"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
           Gestión para barberías
         </span>
-        <h1>Se acabó el<br>cuaderno y la<br><em>calculadora.</em></h1>
-        <p class="lede">Cada barbero anota sus cortes desde el celular. El mostrador registra la venta real cuando cobra. A la noche, Momentum ya tiene el cierre hecho: cuánto entró y cuánto le toca a cada uno — sin sacar una sola cuenta.</p>
+        <h1>Casi 100 horas al año <br>con la <em>calculadora.</em></h1>
+        <p class="lede">Es lo que se te va cerrando la caja a mano, noche tras noche. Momentum lo hace en 15 segundos y sin errores: cuánto entró, cuánto le toca a cada barbero <strong style="color:var(--ink)">al peso</strong>, cuánto te queda a vos. Más las estadísticas que hoy no tenés.</p>
+        <div class="hero-stats">
+          <div class="hero-stat"><b>15&nbsp;s</b><span>y el cierre está</span></div>
+          <div class="hero-stat"><b>$0</b><span>de más por cuentas a ojo</span></div>
+          <div class="hero-stat"><b>10&nbsp;min</b><span>configurar todo</span></div>
+        </div>
         <div class="hero-cta">
           <a class="btn btn-primary js-wa" href="#" target="_blank" rel="noopener">Quiero verla en acción</a>
-          <small>Te la mostramos funcionando con tus propios barberos y tus números. Se entiende en dos minutos.</small>
+          <small>Te la mostramos funcionando con tus propios barberos y tus números.</small>
         </div>
       </div>
 
@@ -326,32 +375,37 @@
         <div class="phone">
           <div class="phone-screen">
             <div class="phone-notch"></div>
-            <div class="phone-label">Mis registros</div>
+            <div class="phone-label">Cierre · hoy</div>
             <div class="phone-card">
-              <div class="phone-card-row">
-                <div>
-                  <div class="phone-stat-label">Cortes realizados</div>
-                  <div class="phone-stat-big">18</div>
-                  <div class="phone-stat-sub">12 registros</div>
-                  <div class="phone-stat-sub">$4.500 en propinas</div>
-                </div>
-                <div style="text-align:right">
-                  <div class="phone-stat-label">Te corresponde</div>
-                  <div class="phone-stat-big gold">$52.300</div>
-                </div>
+              <span class="cl-total-label">Total recaudado</span>
+              <span class="cl-total" data-count="284500" data-prefix="$">$284.500</span>
+              <div class="cl-methods">
+                <span>Efectivo<b>$180.000</b></span><span>Tarjeta<b>$104.500</b></span>
               </div>
-              <div class="phone-note">Tu comisión por servicios más las propinas que cargaste.</div>
+              <div class="cl-sub">A pagar a los barberos</div>
+              <div class="cl-row"><span>Nicolás</span><b>$34.200</b></div>
+              <div class="cl-row"><span>Lucas</span><b>$29.800</b></div>
+              <div class="cl-row"><span>Fran</span><b>$22.100</b></div>
+              <div class="cl-local">
+                <span>Queda para el local</span>
+                <b class="cl-local-amt" data-count="128400" data-prefix="$">$128.400</b>
+              </div>
+              <div class="phone-note">Listo apenas cerrás. Se comparte por WhatsApp.</div>
             </div>
           </div>
         </div>
         <div class="receipt">
-          <div class="receipt-row"><span>CORTE CLASICO</span><span>$6.500</span></div>
-          <div class="receipt-row"><span>BARBA</span><span>$3.000</span></div>
-          <div class="receipt-row"><span>CORTE + BARBA</span><span>$9.000</span></div>
-          <div class="receipt-row"><span>PROPINA</span><span>+$1.200</span></div>
+          <div class="receipt-row"><span>CIERRE</span><span>MAR 12</span></div>
           <div class="receipt-rule"></div>
-          <div class="receipt-row receipt-total"><span>TE CORRESPONDE</span><span>$9.350</span></div>
-          <div class="receipt-foot">Momentum Barber</div>
+          <div class="receipt-row"><span>EFECTIVO</span><span>$180.000</span></div>
+          <div class="receipt-row"><span>TARJETA</span><span>$104.500</span></div>
+          <div class="receipt-rule"></div>
+          <div class="receipt-row"><span>NICOLAS</span><span>$34.200</span></div>
+          <div class="receipt-row"><span>LUCAS</span><span>$29.800</span></div>
+          <div class="receipt-row"><span>FRAN</span><span>$22.100</span></div>
+          <div class="receipt-rule"></div>
+          <div class="receipt-row receipt-total"><span>LOCAL</span><span>$128.400</span></div>
+          <div class="receipt-foot">Enviado por WhatsApp · 20:47</div>
         </div>
       </div>
     </div>
@@ -617,6 +671,40 @@
     var msg = 'Hola! Quiero saber más de Momentum Barber para mi barbería.';
     var href = 'https://wa.me/5491121608606?text=' + encodeURIComponent(msg);
     document.querySelectorAll('.js-wa').forEach(function (a) { a.href = href; });
+
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    // Mockup del cierre: aparición + conteo de los números
+    var proof = document.querySelector('.proof');
+    if (proof && !reduce) {
+      function fmt(n) { return Math.round(n).toLocaleString('es-AR'); }
+      function countUp(el) {
+        var target = parseInt(el.getAttribute('data-count'), 10);
+        var prefix = el.getAttribute('data-prefix') || '';
+        if (isNaN(target)) return;
+        var start = null, dur = 900;
+        function step(t) {
+          if (start === null) start = t;
+          var p = Math.min((t - start) / dur, 1);
+          var eased = 1 - Math.pow(1 - p, 3);
+          el.textContent = prefix + fmt(target * eased);
+          if (p < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+      function run() {
+        proof.classList.add('in');
+        proof.querySelectorAll('[data-count]').forEach(countUp);
+      }
+      if ('IntersectionObserver' in window) {
+        var io = new IntersectionObserver(function (entries) {
+          if (entries[0].isIntersecting) { run(); io.disconnect(); }
+        }, { threshold: 0.3 });
+        io.observe(proof);
+      } else {
+        setTimeout(run, 150);
+      }
+    }
   })();
 </script>
 </body>
