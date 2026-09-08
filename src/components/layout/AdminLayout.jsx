@@ -35,7 +35,7 @@ const NAV_GROUPS = [
   {
     title: 'Clientes y equipo',
     items: [
-      { to: '/admin/clientes', label: 'Clientes', icon: Contact, bookingOnly: true },
+      { to: '/admin/clientes', label: 'Clientes', icon: Contact },
       { to: '/admin/barbers',  label: 'Barberos', icon: Users },
     ],
   },

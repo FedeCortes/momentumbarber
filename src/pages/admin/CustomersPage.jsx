@@ -105,7 +105,7 @@ export default function CustomersPage() {
         <div className="flex justify-center py-16"><Spinner size={24} /></div>
       ) : rows.length === 0 ? (
         <EmptyState icon={Contact} title="Sin clientes"
-          description={q ? 'Nadie coincide con la búsqueda.' : 'Se van sumando solos cuando alguien saca un turno.'} />
+          description={q ? 'Nadie coincide con la búsqueda.' : 'Se van sumando solos al asociarlos a una venta o un turno. También podés cargarlos a mano.'} />
       ) : (
         <div className="flex flex-col gap-2">
           {rows.map(c => (
