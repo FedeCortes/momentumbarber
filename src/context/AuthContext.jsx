@@ -58,14 +58,23 @@ export function AuthProvider({ children }) {
     let active = true
     ;(async () => {
       try {
-        const { data } = await supabase
+        // Se piden todas las columnas de ajustes; si alguna todavía no existe
+        // (migración sin correr), se reintenta con el set mínimo.
+        let { data, error } = await supabase
           .from('tenant_config')
-          .select('stock_enabled, booking_enabled')
+          .select('stock_enabled, booking_enabled, loyalty_enabled, loyalty_min')
           .eq('tenant_id', tid)
           .maybeSingle()
+        if (error) {
+          ({ data } = await supabase
+            .from('tenant_config')
+            .select('stock_enabled, booking_enabled')
+            .eq('tenant_id', tid)
+            .maybeSingle())
+        }
         if (active) setTenantConfig(data || null)
       } catch {
-        /* stock_enabled puede no existir todavía; se ignora */
+        /* algunas columnas pueden no existir todavía; se ignora */
       }
     })()
     return () => { active = false }
@@ -164,6 +173,8 @@ export function AuthProvider({ children }) {
   const isBarber = !!barberSession?.barber && !!session
   const stockEnabled = !!tenantConfig?.stock_enabled
   const bookingEnabled = !!tenantConfig?.booking_enabled
+  const loyaltyEnabled = !!tenantConfig?.loyalty_enabled
+  const loyaltyMin = Number(tenantConfig?.loyalty_min) || 10
 
   // Lo usa Configuración para reflejar el switch sin recargar la app
   function setStockEnabled(v) {
@@ -172,13 +183,17 @@ export function AuthProvider({ children }) {
   function setBookingEnabled(v) {
     setTenantConfig(c => ({ ...(c || {}), booking_enabled: !!v }))
   }
+  function setLoyalty(patch) {
+    setTenantConfig(c => ({ ...(c || {}), ...patch }))
+  }
 
   return (
     <AuthContext.Provider value={{
       session, profile, tenant, tenantConfig, barberSession,
       loading, isRoot, isAdmin, isBarber, stockEnabled, bookingEnabled,
+      loyaltyEnabled, loyaltyMin,
       signIn, signOut, setBarber, clearBarberSession, loadProfile,
-      setStockEnabled, setBookingEnabled,
+      setStockEnabled, setBookingEnabled, setLoyalty,
       rememberProfileUnlock, isProfileUnlocked,
     }}>
       {children}

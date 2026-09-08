@@ -8,6 +8,7 @@ import Modal from '../../components/ui/Modal'
 import EmptyState from '../../components/ui/EmptyState'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import Spinner from '../../components/ui/Spinner'
+import StarMeter from '../../components/booking/StarMeter'
 import {
   fmtDayShort, waLink, telLink, normPhone, customerUpsert,
   STATUS_LABEL, STATUS_BADGE,
@@ -15,7 +16,7 @@ import {
 import toast from 'react-hot-toast'
 
 export default function CustomersPage() {
-  const { tenant } = useAuth()
+  const { tenant, loyaltyEnabled, loyaltyMin } = useAuth()
   const [customers, setCustomers] = useState([])
   const [appts, setAppts] = useState([])
   const [barbers, setBarbers] = useState([])
@@ -74,6 +75,14 @@ export default function CustomersPage() {
     return appts.filter(a => a.customer_id === selected.id)
   }, [appts, selected])
 
+  // Refresca la ficha abierta y la lista (después de un canje)
+  async function refreshSelected() {
+    if (!selected) return
+    const { data } = await supabase.from('customers').select('*').eq('id', selected.id).maybeSingle()
+    if (data) setSelected(data)
+    load()
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -110,6 +119,9 @@ export default function CustomersPage() {
                   {c.phone || c.phone_key}
                   {c.st.visits > 0 && <span className="text-cream/30"> · {c.st.visits} corte{c.st.visits === 1 ? '' : 's'}</span>}
                 </p>
+                {loyaltyEnabled && (Number(c.stars) > 0 || Number(c.redemptions) > 0) && (
+                  <div className="mt-1.5"><StarMeter customer={c} min={loyaltyMin} compact /></div>
+                )}
               </div>
               {c.st.last && (
                 <span className="text-cream/30 text-[11px] shrink-0 text-right">
@@ -126,6 +138,8 @@ export default function CustomersPage() {
         {selected && (
           <CustomerDetail
             customer={selected} history={history} barberName={barberName}
+            loyalty={loyaltyEnabled ? { enabled: true, min: loyaltyMin } : null}
+            onRedeemed={refreshSelected}
             onClose={() => setSelected(null)}
             onSaved={() => { setSelected(null); load() }}
           />
@@ -140,7 +154,7 @@ export default function CustomersPage() {
   )
 }
 
-function CustomerDetail({ customer, history, barberName, onClose, onSaved }) {
+function CustomerDetail({ customer, history, barberName, loyalty, onRedeemed, onClose, onSaved }) {
   const [form, setForm] = useState({
     name: customer.name || '', email: customer.email || '', notes: customer.notes || '',
   })
@@ -182,6 +196,13 @@ function CustomerDetail({ customer, history, barberName, onClose, onSaved }) {
           </>
         )}
       </div>
+
+      {loyalty?.enabled && (
+        <div className="rounded-xl border border-gold/25 bg-gold/8 p-3">
+          <p className="text-cream/50 text-[11px] uppercase tracking-wide mb-2">Estrellas</p>
+          <StarMeter customer={customer} min={loyalty.min} onRedeemed={onRedeemed} />
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div>

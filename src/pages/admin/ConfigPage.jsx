@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, ChevronUp, Lock, Boxes, ToggleLeft, ToggleRight, CalendarClock, Copy, Link2, Clock } from 'lucide-react'
+import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, ChevronUp, Lock, Boxes, ToggleLeft, ToggleRight, CalendarClock, Copy, Link2, Clock, Star } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { stockLevel } from '../../lib/stock'
@@ -696,6 +696,78 @@ function BookingSection({ tenant }) {
 }
 
 
+// ── Canje por estrellas (fidelización) ─────────────────────
+function LoyaltySection({ tenant }) {
+  const { loyaltyEnabled, loyaltyMin, setLoyalty } = useAuth()
+  const [min, setMin] = useState(String(loyaltyMin))
+  const [toggling, setToggling] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { setMin(String(loyaltyMin)) }, [loyaltyMin])
+
+  async function toggle() {
+    const next = !loyaltyEnabled
+    setToggling(true)
+    const { error } = await supabase.from('tenant_config')
+      .update({ loyalty_enabled: next, updated_at: new Date().toISOString() })
+      .eq('tenant_id', tenant.id)
+    setToggling(false)
+    if (error) return toast.error('No se pudo guardar. ¿Corriste la migración v2 en Supabase?')
+    setLoyalty({ loyalty_enabled: next })
+    toast.success(next ? 'Canje por estrellas activado' : 'Canje por estrellas desactivado')
+  }
+
+  async function saveMin() {
+    const n = Math.max(2, Math.min(50, Number(min) || 10))
+    setMin(String(n))
+    if (n === loyaltyMin) return
+    setSaving(true)
+    const { error } = await supabase.from('tenant_config')
+      .update({ loyalty_min: n, updated_at: new Date().toISOString() })
+      .eq('tenant_id', tenant.id)
+    setSaving(false)
+    if (error) return toast.error('Error al guardar')
+    setLoyalty({ loyalty_min: n })
+    toast.success('Mínimo actualizado')
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <Star size={18} className="text-cream/40 mt-0.5 shrink-0" />
+          <div>
+            <h3 className="font-display text-lg text-cream">Canje por estrellas</h3>
+            <p className="text-cream/40 text-xs mt-1 max-w-md leading-relaxed">
+              Cada venta oficial con un cliente asociado le suma <span className="text-cream/60">1 estrella</span>.
+              Al llegar al mínimo, aparece el botón <span className="text-cream/60">Canjear</span> (en la venta
+              y en la ficha del cliente): registra el canje y le vuelve las estrellas a cero.
+            </p>
+          </div>
+        </div>
+        <button onClick={toggle} disabled={toggling} className="shrink-0 mt-0.5 disabled:opacity-40">
+          {loyaltyEnabled
+            ? <ToggleRight size={32} className="text-emerald-400" />
+            : <ToggleLeft size={32} className="text-cream/30" />}
+        </button>
+      </div>
+
+      {loyaltyEnabled && (
+        <div className="mt-4 pt-4 border-t border-dark-300">
+          <label className="label">Estrellas para poder canjear</label>
+          <div className="flex items-center gap-2">
+            <input type="number" min="2" max="50" className="input-dark !w-24"
+                   value={min} onChange={e => setMin(e.target.value)}
+                   onBlur={saveMin} onKeyDown={e => e.key === 'Enter' && e.currentTarget.blur()} />
+            <span className="text-cream/40 text-sm">estrellas {saving && '· guardando...'}</span>
+          </div>
+          <p className="text-cream/30 text-xs mt-2">Ej: 10 = el 11º corte sale gratis (o lo que definas como premio).</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function ConfigPage() {
   const { tenant, stockEnabled, setStockEnabled, bookingEnabled } = useAuth()
   const [adminPass, setAdminPass] = useState('')
@@ -760,6 +832,7 @@ export default function ConfigPage() {
       </div>
 
       <BookingSection tenant={tenant} />
+      <LoyaltySection tenant={tenant} />
 
       <CatalogSection
         title="Servicios" tableName="services" tenantId={tenant.id}

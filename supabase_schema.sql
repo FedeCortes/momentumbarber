@@ -372,9 +372,13 @@ create policy "config_tenant"   on public.tenant_config for all using (tenant_id
 --       booking_appointment, booking_cancel, booking_reschedule
 --   booking_v2.sql:
 --     · barbers       + bio
---     · customers     (nombre/tel/email/notas; RLS root + tenant; único por tenant+phone_key)
---     · appointments  + customer_id
---     · norm_phone(), customer_upsert()  (grant a anon)
+--     · customers     (nombre/tel/email/notas/stars/redemptions; RLS root + tenant;
+--                      único por tenant+phone_key)
+--     · appointments  + customer_id ;  sales + customer_id ;  drafts + customer_id
+--     · tenant_config + loyalty_enabled, loyalty_min
+--     · norm_phone(), customer_upsert() (solo authenticated + guard de tenant),
+--       customer_redeem() (registra canje: +1 canje, estrellas a 0)
+--     · trigger award_loyalty_star on sales (suma 1 estrella si loyalty_enabled)
 --     · storage bucket 'avatars' + policies (fotos de barbero)
 -- ============================================================
 

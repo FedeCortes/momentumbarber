@@ -8,6 +8,7 @@ import CommissionBadge from '../../components/ui/CommissionBadge'
 import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesByBarber } from '../../lib/earnings'
 import { applyStockDelta, checkStock } from '../../lib/stock'
 import { qAll } from '../../lib/query'
+import CustomerPicker from '../../components/booking/CustomerPicker'
 import toast from 'react-hot-toast'
 
 function ItemPicker({ items, selected, onToggle, commissionOf, stockOf }) {
@@ -79,7 +80,7 @@ function ShopBadge() {
 }
 
 export default function SalesPage() {
-  const { tenant, stockEnabled } = useAuth()
+  const { tenant, stockEnabled, loyaltyEnabled, loyaltyMin } = useAuth()
   const [tab, setTab] = useState('venta') // 'venta' | 'consumo'
   const [barbers, setBarbers] = useState([])
   const [services, setServices] = useState([])
@@ -93,6 +94,7 @@ export default function SalesPage() {
 
   const [selectedBarber, setSelectedBarber] = useState('')
   const [shopOnly, setShopOnly] = useState(false)
+  const [customer, setCustomer] = useState(null)
   const [selServices, setSelServices] = useState({})
   const [selProducts, setSelProducts] = useState({})
   const [selDrinks, setSelDrinks] = useState({})
@@ -280,7 +282,7 @@ export default function SalesPage() {
         if (bad.length) { setLoading(false); return toast.error(`Sin stock: ${bad.map(b => `${b.name} (quedan ${b.stock})`).join(', ')}`) }
       }
 
-      const { data: sale, error } = await supabase.from('sales').insert({
+      const saleRow = {
         tenant_id: tenant.id,
         barber_id: selectedBarber || null,
         payment_method_id: paymentMethod,
@@ -292,16 +294,32 @@ export default function SalesPage() {
         shop_earnings: shopEarnings,
         surcharge_amt: surchargeAmt,
         sale_date: format(new Date(), 'yyyy-MM-dd'),
-      }).select().single()
+        ...(customer?.id ? { customer_id: customer.id } : {}),
+      }
+      let { data: sale, error } = await supabase.from('sales').insert(saleRow).select().single()
+      if (error && /customer_id/.test(error.message || '')) {
+        const { customer_id: _c, ...rest } = saleRow
+        ;({ data: sale, error } = await supabase.from('sales').insert(rest).select().single())
+      }
       if (error) throw error
       if (items.length) await supabase.from('sale_items').insert(items.map(i => ({ ...i, sale_id: sale.id })))
       if (stockEnabled) await applyStockDelta(items, -1)
-      toast.success('¡Venta registrada!')
+
+      // Estrella de fidelización (la suma un trigger en la base)
+      if (customer?.id && loyaltyEnabled) {
+        const next = (Number(customer.stars) || 0) + 1
+        toast.success(next >= loyaltyMin
+          ? `¡Venta registrada! ${customer.name?.split(' ')[0] || 'El cliente'} ya puede canjear ⭐ (${next}/${loyaltyMin})`
+          : `¡Venta registrada! +1 ⭐ para ${customer.name?.split(' ')[0] || 'el cliente'} (${next}/${loyaltyMin})`)
+      } else {
+        toast.success('¡Venta registrada!')
+      }
 
       setSaved(true)
       setTimeout(() => {
         setSelServices({}); setSelProducts({}); setSelDrinks({})
         setPaymentMethod(''); setTip(''); setSelectedBarber(''); setShopOnly(false)
+        setCustomer(null)
         setSaved(false)
       }, 1200)
     } catch (e) {
@@ -456,6 +474,22 @@ export default function SalesPage() {
         </div>
         {shopOnly && (
           <p className="text-cream/35 text-xs mt-2">Venta sin barbero: todo lo que cargues va 100% al local.</p>
+        )}
+      </div>
+
+      {/* ── Cliente (opcional) ── */}
+      <div className="card mb-3">
+        <label className="label">Cliente <span className="text-cream/25 normal-case font-normal tracking-normal">(opcional)</span></label>
+        <div className="mt-1">
+          <CustomerPicker
+            tenantId={tenant.id}
+            value={customer}
+            onChange={setCustomer}
+            loyalty={loyaltyEnabled ? { enabled: true, min: loyaltyMin } : null}
+          />
+        </div>
+        {loyaltyEnabled && !customer && (
+          <p className="text-cream/30 text-xs mt-2">Asociá el cliente para sumarle su estrella de esta visita.</p>
         )}
       </div>
 

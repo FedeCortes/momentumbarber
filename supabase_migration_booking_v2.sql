@@ -1,5 +1,6 @@
 -- ============================================================
--- MIGRACIÓN — Turnos v2: clientes, perfil de barbero, fotos
+-- MIGRACIÓN — Turnos v2: clientes, perfil de barbero, fotos,
+--                        cliente en la venta y canje por estrellas
 -- Ejecutar en el SQL Editor de Supabase (idempotente)
 -- Requiere haber corrido antes supabase_migration_appointments.sql
 -- ============================================================
@@ -60,6 +61,12 @@ create or replace function public.customer_upsert(
 language plpgsql security definer set search_path = public as $$
 declare v_key text; v_id uuid;
 begin
+  -- Un usuario logueado solo puede tocar clientes de su propia barbería.
+  -- (El flujo anónimo entra por booking_create, que resuelve el tenant del slug.)
+  if auth.uid() is not null and p_tenant is distinct from public.my_tenant_id() then
+    raise exception 'No autorizado';
+  end if;
+
   v_key := public.norm_phone(p_phone);
   if v_key is null then return null; end if;   -- sin teléfono válido no hay cliente
 
@@ -74,8 +81,9 @@ begin
   return v_id;
 end;
 $$;
-grant execute on function public.norm_phone(text)                       to anon, authenticated;
-grant execute on function public.customer_upsert(uuid, text, text, text) to anon, authenticated;
+grant execute on function public.norm_phone(text)                        to anon, authenticated;
+revoke execute on function public.customer_upsert(uuid, text, text, text) from anon;
+grant  execute on function public.customer_upsert(uuid, text, text, text) to authenticated;
 
 -- ============================================================
 -- booking_shop — ahora devuelve la bio de cada barbero
@@ -236,6 +244,68 @@ from public.customers c
 where a.customer_id is null
   and c.tenant_id = a.tenant_id
   and c.phone_key = public.norm_phone(a.customer_phone);
+
+-- ============================================================
+-- CLIENTE EN LA VENTA  +  CANJE POR ESTRELLAS (fidelización)
+-- ============================================================
+alter table public.customers
+  add column if not exists stars       int not null default 0,
+  add column if not exists redemptions int not null default 0;
+
+alter table public.sales
+  add column if not exists customer_id uuid references public.customers(id) on delete set null;
+alter table public.drafts
+  add column if not exists customer_id uuid references public.customers(id) on delete set null;
+create index if not exists sales_customer_idx  on public.sales  (customer_id);
+create index if not exists drafts_customer_idx on public.drafts (customer_id);
+
+alter table public.tenant_config
+  add column if not exists loyalty_enabled boolean not null default false,
+  add column if not exists loyalty_min     int not null default 10;
+
+-- Cada venta oficial con cliente suma 1 estrella (solo si la fidelización está activa)
+create or replace function public.tg_award_loyalty_star()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.customer_id is not null
+     and exists (select 1 from public.tenant_config c
+                 where c.tenant_id = new.tenant_id and c.loyalty_enabled) then
+    update public.customers
+       set stars = stars + 1, updated_at = now()
+     where id = new.customer_id and tenant_id = new.tenant_id;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists award_loyalty_star on public.sales;
+create trigger award_loyalty_star after insert on public.sales
+  for each row execute function public.tg_award_loyalty_star();
+
+-- Registrar un canje: +1 canje y estrellas a 0
+create or replace function public.customer_redeem(p_customer uuid)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v_c public.customers; v_cfg record;
+begin
+  select * into v_c from public.customers
+   where id = p_customer and tenant_id = public.my_tenant_id();
+  if v_c is null then raise exception 'Cliente no encontrado'; end if;
+
+  select loyalty_enabled, loyalty_min into v_cfg
+    from public.tenant_config where tenant_id = v_c.tenant_id;
+  if not coalesce(v_cfg.loyalty_enabled, false) then
+    raise exception 'El canje por estrellas no está activado';
+  end if;
+  if v_c.stars < coalesce(v_cfg.loyalty_min, 10) then
+    raise exception 'Todavía no llega al mínimo de estrellas';
+  end if;
+
+  update public.customers
+     set stars = 0, redemptions = redemptions + 1, updated_at = now()
+   where id = p_customer;
+  return jsonb_build_object('ok', true, 'redemptions', v_c.redemptions + 1);
+end;
+$$;
+grant execute on function public.customer_redeem(uuid) to authenticated;
 
 -- ============================================================
 -- STORAGE — bucket público para fotos de barberos

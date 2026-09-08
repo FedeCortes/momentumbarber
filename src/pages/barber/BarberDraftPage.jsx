@@ -8,6 +8,7 @@ import { es } from 'date-fns/locale'
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesMap } from '../../lib/earnings'
 import { qAll } from '../../lib/query'
+import CustomerPicker from '../../components/booking/CustomerPicker'
 import toast from 'react-hot-toast'
 
 function ItemPicker({ items, selected, onToggle, commissionOf, stockOf }) {
@@ -144,6 +145,7 @@ export default function BarberDraftPage() {
   const [selServices, setSelServices]   = useState({})
   const [selProducts, setSelProducts]   = useState({})
   const [selDrinks, setSelDrinks]       = useState({})
+  const [customer, setCustomer]         = useState(null)
   const [paymentMethod, setPaymentMethod] = useState('')
   const [tip, setTip]                   = useState('')
   const [loading, setLoading]           = useState(false)
@@ -202,6 +204,10 @@ export default function BarberDraftPage() {
       setPaymentMethod(draft.payment_method_id || '')
       setTip(Number(draft.tip) > 0 ? String(draft.tip) : '')
       setPendingEditItems(items || [])
+      if (draft.customer_id) {
+        supabase.from('customers').select('*').eq('id', draft.customer_id).maybeSingle()
+          .then(({ data }) => { if (data) setCustomer(data) })
+      }
     })
   }, [editId, tenant?.id])
 
@@ -285,11 +291,14 @@ export default function BarberDraftPage() {
         total_products: totalProducts,
         total_drinks: totalDrinks,
         surcharge_amt: surchargeAmt,
+        customer_id: customer?.id || null,
       }
+      const noCustCol = err => /customer_id/.test(err?.message || '')
+      const dropCust = () => { const { customer_id: _c, ...rest } = payload; return rest }
 
       if (editId) {
-        const { error } = await supabase.from('drafts')
-          .update(payload).eq('id', editId)
+        let { error } = await supabase.from('drafts').update(payload).eq('id', editId)
+        if (error && noCustCol(error)) ({ error } = await supabase.from('drafts').update(dropCust()).eq('id', editId))
         if (error) throw error
         await supabase.from('draft_items').delete().eq('draft_id', editId)
         if (items.length) {
@@ -298,12 +307,9 @@ export default function BarberDraftPage() {
         setSaved(true)
         setTimeout(() => navigate('/barber/history'), 1500)
       } else {
-        const { data: draft, error } = await supabase.from('drafts').insert({
-          tenant_id: tenant.id,
-          barber_id: barber.id,
-          draft_date: format(new Date(), 'yyyy-MM-dd'),
-          ...payload,
-        }).select().single()
+        const base = { tenant_id: tenant.id, barber_id: barber.id, draft_date: format(new Date(), 'yyyy-MM-dd') }
+        let { data: draft, error } = await supabase.from('drafts').insert({ ...base, ...payload }).select().single()
+        if (error && noCustCol(error)) ({ data: draft, error } = await supabase.from('drafts').insert({ ...base, ...dropCust() }).select().single())
         if (error) throw error
         if (items.length) {
           await supabase.from('draft_items').insert(items.map(i => ({ ...i, draft_id: draft.id })))
@@ -311,7 +317,7 @@ export default function BarberDraftPage() {
         setSaved(true)
         setTimeout(() => {
           setSelServices({}); setSelProducts({}); setSelDrinks({})
-          setPaymentMethod(''); setTip('')
+          setPaymentMethod(''); setTip(''); setCustomer(null)
           setSaved(false)
           setRefreshKey(k => k + 1)
         }, 1500)
@@ -393,6 +399,12 @@ export default function BarberDraftPage() {
             </div>
           </>
         )}
+      </div>
+
+      {/* Cliente (opcional) */}
+      <div className="card !p-3 mb-2">
+        <label className="label mb-1.5">Cliente <span className="text-cream/25 normal-case font-normal tracking-normal">(opcional)</span></label>
+        <CustomerPicker tenantId={tenant.id} value={customer} onChange={setCustomer} />
       </div>
 
       {/* Servicios */}

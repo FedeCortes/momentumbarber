@@ -87,6 +87,27 @@ export async function customerUpsert(supabase, { tenantId, phone, name, email })
   return data || null
 }
 
+// Busca clientes del tenant por nombre o teléfono. Devuelve hasta `limit`.
+export async function customerSearch(supabase, tenantId, term, limit = 8) {
+  let query = supabase.from('customers').select('*').eq('tenant_id', tenantId)
+  const t = (term || '').trim()
+  if (t) {
+    const key = normPhone(t)
+    query = key
+      ? query.or(`name.ilike.%${t}%,phone_key.ilike.%${key}%`)
+      : query.ilike('name', `%${t}%`)
+  }
+  const { data } = await query.order('updated_at', { ascending: false }).limit(limit)
+  return data || []
+}
+
+// Registra un canje (RPC customer_redeem). Devuelve true si salió bien.
+export async function customerRedeem(supabase, customerId) {
+  const { error } = await supabase.rpc('customer_redeem', { p_customer: customerId })
+  if (error) throw new Error(error.message)
+  return true
+}
+
 export function waLink(phone, text) {
   const n = waNumber(phone)
   if (!n) return ''
