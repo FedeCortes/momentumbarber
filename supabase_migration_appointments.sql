@@ -144,6 +144,44 @@ returns jsonb language sql stable security definer set search_path = public as $
   where t.slug = lower(p_slug) and t.is_active;
 $$;
 
+-- Bloques de trabajo de un barbero para un día de la semana, con las franjas
+-- contiguas o superpuestas ya fusionadas (así 09:00-13:00 + 13:00-18:00 cargadas
+-- por separado cuentan como jornada corrida y no dejan un hueco en el medio).
+create or replace function public.barber_blocks(p_barber uuid, p_weekday int)
+returns table (start_time time, end_time time)
+language sql stable set search_path = public as $$
+  select min(h.start_time), max(h.end_time)
+  from (
+    select start_time, end_time,
+           sum(is_new) over (order by start_time, end_time) as island
+    from (
+      select start_time, end_time,
+             case when start_time <= max(end_time) over (
+                    order by start_time, end_time
+                    rows between unbounded preceding and 1 preceding)
+                  then 0 else 1 end as is_new
+      from public.barber_hours
+      where barber_id = p_barber and weekday = p_weekday and end_time > start_time
+    ) a
+  ) h
+  group by h.island;
+$$;
+
+-- ¿El barbero atiende en toda la ventana [p_start, p_end)?
+create or replace function public.barber_open_between(
+  p_barber uuid, p_start timestamptz, p_end timestamptz
+) returns boolean
+language sql stable set search_path = public as $$
+  select exists (
+    select 1 from public.barber_blocks(
+      p_barber,
+      extract(dow from (p_start at time zone 'America/Argentina/Buenos_Aires'))::int
+    ) blk
+    where (p_start at time zone 'America/Argentina/Buenos_Aires')::time >= blk.start_time
+      and (p_end   at time zone 'America/Argentina/Buenos_Aires')::time <= blk.end_time
+  );
+$$;
+
 -- Horarios disponibles para un servicio (y opcionalmente un barbero)
 create or replace function public.booking_slots(
   p_slug text, p_service_id uuid, p_barber_id uuid, p_days int default 21
@@ -204,8 +242,7 @@ begin
         )
     loop
       for r_block in
-        select start_time, end_time from public.barber_hours
-        where barber_id = r_barber.id and weekday = v_dow
+        select start_time, end_time from public.barber_blocks(r_barber.id, v_dow)
       loop
         v_cursor    := v_date + r_block.start_time;
         v_block_end := v_date + r_block.end_time;
@@ -303,13 +340,7 @@ begin
       select 1 from public.barber_services bs
       where bs.barber_id = b.id and bs.service_id = p_service_id and bs.is_enabled = false
     )
-    and exists (
-      select 1 from public.barber_hours h
-      where h.barber_id = b.id
-        and h.weekday = extract(dow from v_local)::int
-        and v_local::time >= h.start_time
-        and (v_end at time zone v_tz)::time <= h.end_time
-    )
+    and public.barber_open_between(b.id, p_starts_at, v_end)
     and not exists (
       select 1 from public.barber_time_off t
       where t.barber_id = b.id and t.starts_at < v_end and t.ends_at > p_starts_at
@@ -403,13 +434,7 @@ begin
 
   perform pg_advisory_xact_lock(hashtext(v_appt.tenant_id::text || p_new_starts_at::text));
 
-  if not exists (
-    select 1 from public.barber_hours h
-    where h.barber_id = v_appt.barber_id
-      and h.weekday = extract(dow from v_local)::int
-      and v_local::time >= h.start_time
-      and (v_end at time zone v_tz)::time <= h.end_time
-  ) then
+  if not public.barber_open_between(v_appt.barber_id, p_new_starts_at, v_end) then
     raise exception 'Ese horario ya no está disponible';
   end if;
 
