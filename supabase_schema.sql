@@ -356,6 +356,29 @@ create policy "config_root"     on public.tenant_config for all using (public.my
 create policy "config_tenant"   on public.tenant_config for all using (tenant_id = public.my_tenant_id());
 
 -- ============================================================
+-- RESERVAS ONLINE / AGENDA DE TURNOS
+-- El DDL completo vive en supabase_migration_appointments.sql y
+-- supabase_migration_booking_v2.sql — correr esos archivos en orden.
+-- Resumen:
+--   appointments.sql:
+--     · services      + duration_min, bookable, sort_order, description
+--     · barbers       + bookable
+--     · tenant_config + booking_enabled, booking_slot_min, booking_lead_hours,
+--                       booking_horizon_days, booking_notice, booking_whatsapp
+--     · barber_hours     (grilla semanal por barbero)
+--     · barber_time_off  (bloqueos puntuales)
+--     · appointments     (turnos; RLS solo root + tenant)
+--     · RPC security definer: booking_shop, booking_slots, booking_create,
+--       booking_appointment, booking_cancel, booking_reschedule
+--   booking_v2.sql:
+--     · barbers       + bio
+--     · customers     (nombre/tel/email/notas; RLS root + tenant; único por tenant+phone_key)
+--     · appointments  + customer_id
+--     · norm_phone(), customer_upsert()  (grant a anon)
+--     · storage bucket 'avatars' + policies (fotos de barbero)
+-- ============================================================
+
+-- ============================================================
 -- DATOS SEMILLA — servicios y métodos de pago por defecto
 -- (se insertan al crear un tenant desde el código de la app)
 -- ============================================================

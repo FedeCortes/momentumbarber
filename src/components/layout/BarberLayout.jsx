@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, NavLink } from 'react-router-dom'
-import { LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle } from 'lucide-react'
+import { LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle, CalendarDays, UserCircle } from 'lucide-react'
 import BarberPoleMark from '../ui/BarberPoleMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -22,8 +22,15 @@ function ThemeToggle() {
 }
 
 export default function BarberLayout() {
-  const { clearBarberSession, signOut, barberSession, tenant } = useAuth()
+  const { clearBarberSession, signOut, barberSession, tenant, bookingEnabled } = useAuth()
   const navigate = useNavigate()
+
+  const navItems = [
+    { to: '/barber',         end: true,  icon: PlusCircle,    label: 'Registrar' },
+    ...(bookingEnabled ? [{ to: '/barber/agenda', end: false, icon: CalendarDays, label: 'Agenda' }] : []),
+    { to: '/barber/history', end: false, icon: ClipboardList, label: 'Registros' },
+    { to: '/barber/perfil',  end: false, icon: UserCircle,    label: 'Perfil' },
+  ]
 
   function handleSwitch() {
     clearBarberSession()
@@ -108,10 +115,7 @@ export default function BarberLayout() {
         }}
       >
         <div className="flex max-w-lg mx-auto">
-          {[
-            { to: '/barber',         end: true,  icon: PlusCircle,    label: 'Registrar' },
-            { to: '/barber/history', end: false, icon: ClipboardList, label: 'Mis registros' },
-          ].map(({ to, end, icon: Icon, label }) => (
+          {navItems.map(({ to, end, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}

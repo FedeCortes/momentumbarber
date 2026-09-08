@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
-import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, ChevronUp, Lock, Boxes, ToggleLeft, ToggleRight } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, ChevronUp, Lock, Boxes, ToggleLeft, ToggleRight, CalendarClock, Copy, Link2, Clock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { stockLevel } from '../../lib/stock'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import Modal from '../../components/ui/Modal'
+import HoursEditor from '../../components/booking/HoursEditor'
 import toast from 'react-hot-toast'
 
 // Colores por estado de stock frente al punto de reposición
@@ -66,18 +68,20 @@ function StockControl({ item, tableName, onChange }) {
   )
 }
 
-function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false }) {
+function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false, showDuration = false, showBookable = false }) {
   const [items, setItems] = useState([])
   const [quickName, setQuickName] = useState('')
   const [quickPrice, setQuickPrice] = useState('')
   const [quickBarberPrice, setQuickBarberPrice] = useState('')
   const [quickStock, setQuickStock] = useState('')
+  const [quickDuration, setQuickDuration] = useState('')
   const [adding, setAdding] = useState(false)
   const [editId, setEditId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editBarberPrice, setEditBarberPrice] = useState('')
   const [editMinStock, setEditMinStock] = useState('')
+  const [editDuration, setEditDuration] = useState('')
   const [deleteId, setDeleteId] = useState(null)
   const nameRef = useRef(null)
   const priceRef = useRef(null)
@@ -98,6 +102,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       ...(showPrice ? { price: Number(quickPrice) || 0 } : {}),
       ...(showBarberPrice ? { barber_price: quickBarberPrice === '' ? null : Number(quickBarberPrice) } : {}),
       ...(showStock ? { stock: Number(quickStock) || 0 } : {}),
+      ...(showDuration ? { duration_min: Number(quickDuration) || 30 } : {}),
     }
     const { error } = await supabase.from(tableName).insert(payload)
     setAdding(false)
@@ -106,6 +111,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
     setQuickPrice('')
     setQuickBarberPrice('')
     setQuickStock('')
+    setQuickDuration('')
     nameRef.current?.focus()
     load()
   }
@@ -120,6 +126,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
     setEditPrice(item.price ?? '')
     setEditBarberPrice(item.barber_price ?? '')
     setEditMinStock(item.min_stock ?? '')
+    setEditDuration(item.duration_min ?? '')
   }
 
   async function saveEdit(item) {
@@ -129,9 +136,15 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       ...(showPrice ? { price: Number(editPrice) || 0 } : {}),
       ...(showBarberPrice ? { barber_price: editBarberPrice === '' ? null : Number(editBarberPrice) } : {}),
       ...(showStock ? { min_stock: Number(editMinStock) || 0 } : {}),
+      ...(showDuration ? { duration_min: Number(editDuration) || 30 } : {}),
     }
     await supabase.from(tableName).update(payload).eq('id', item.id)
     setEditId(null)
+    load()
+  }
+
+  async function toggleBookable(item) {
+    await supabase.from(tableName).update({ bookable: !(item.bookable ?? true) }).eq('id', item.id)
     load()
   }
 
@@ -190,6 +203,19 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
             onKeyDown={handleKeyDown}
           />
         )}
+        {showDuration && (
+          <div className="relative w-24 shrink-0">
+            <input
+              type="number" min="5" step="5"
+              className="input-dark w-full pr-9"
+              placeholder="30"
+              value={quickDuration}
+              onChange={e => setQuickDuration(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-cream/40 text-xs pointer-events-none">min</span>
+          </div>
+        )}
         <button
           onClick={quickAdd}
           disabled={adding || !quickName.trim()}
@@ -204,6 +230,11 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       {showStock && (
         <p className={`text-cream/30 text-xs mb-4 ${showBarberPrice ? '' : '-mt-3'}`}>
           Stock: unidades que hay ahora (ajustables con − / +). Tocá el lápiz para fijar el <span className="text-cream/45">stock mínimo</span> (punto de reposición): al llegar a ese número o menos, queda en rojo.
+        </p>
+      )}
+      {showDuration && (
+        <p className="text-cream/30 text-xs -mt-3 mb-4">
+          La duración (en minutos) define cuánto ocupa el turno en la agenda. Tocá <span className="text-cream/45">Online</span> para sacar un servicio de la reserva online sin borrarlo.
         </p>
       )}
 
@@ -253,6 +284,19 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                       onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
                     />
                   )}
+                  {showDuration && (
+                    <div className="relative w-20 shrink-0">
+                      <input
+                        type="number" min="5" step="5"
+                        className="input-dark w-full py-1 text-sm pr-8"
+                        placeholder="30"
+                        value={editDuration}
+                        onChange={e => setEditDuration(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-cream/35 text-[10px] pointer-events-none">min</span>
+                    </div>
+                  )}
                   <button onClick={() => saveEdit(item)} className="text-emerald-400 hover:text-emerald-300 p-1">
                     <Check size={16} />
                   </button>
@@ -263,6 +307,22 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
               ) : (
                 <>
                   <span className="flex-1 text-cream/80 text-sm min-w-[8rem]">{item.name}</span>
+                  {showDuration && (
+                    <span className="text-cream/35 text-xs shrink-0">{item.duration_min ?? 30} min</span>
+                  )}
+                  {showBookable && (
+                    <button
+                      onClick={() => toggleBookable(item)}
+                      className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border shrink-0 ${
+                        (item.bookable ?? true)
+                          ? 'text-emerald-400 border-emerald-400/40 bg-emerald-400/10'
+                          : 'text-cream/30 border-dark-400'
+                      }`}
+                      title={(item.bookable ?? true) ? 'Se puede reservar online' : 'No aparece en la reserva online'}
+                    >
+                      Online
+                    </button>
+                  )}
                   {showPrice && (
                     <span className="text-gold text-sm font-medium shrink-0">
                       ${Number(item.price).toLocaleString('es-AR')}
@@ -444,8 +504,200 @@ function PaymentMethodSection({ tenantId }) {
   )
 }
 
+// ── Reservas online: switch + link público + ajustes ────────
+function BookingSection({ tenant }) {
+  const { bookingEnabled, setBookingEnabled } = useAuth()
+  const [cfg, setCfg] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [toggling, setToggling] = useState(false)
+  const [hoursOpen, setHoursOpen] = useState(false)
+  const [hoursStat, setHoursStat] = useState(null)  // { withHours, total }
+
+  useEffect(() => {
+    if (!tenant?.id) return
+    const cols = 'booking_slot_min, booking_lead_hours, booking_horizon_days, booking_notice, booking_whatsapp'
+    const fallback = { booking_slot_min: 15, booking_lead_hours: 2, booking_horizon_days: 21, booking_notice: '', booking_whatsapp: '' }
+    ;(async () => {
+      let { data, error } = await supabase.from('tenant_config').select(cols).eq('tenant_id', tenant.id).maybeSingle()
+      // por si todavía no se corrió la migración con booking_whatsapp
+      if (error) ({ data } = await supabase.from('tenant_config')
+        .select('booking_slot_min, booking_lead_hours, booking_horizon_days, booking_notice')
+        .eq('tenant_id', tenant.id).maybeSingle())
+      setCfg(data ? { ...fallback, ...data } : fallback)
+    })()
+  }, [tenant?.id])
+
+  const loadHoursStat = useCallback(() => {
+    if (!tenant?.id) return
+    Promise.all([
+      supabase.from('barbers').select('id').eq('tenant_id', tenant.id).eq('is_active', true),
+      supabase.from('barber_hours').select('barber_id').eq('tenant_id', tenant.id),
+    ]).then(([b, h]) => {
+      const withHours = new Set((h.data || []).map(r => r.barber_id)).size
+      setHoursStat({ withHours, total: (b.data || []).length })
+    })
+  }, [tenant?.id])
+  useEffect(() => { if (bookingEnabled) loadHoursStat() }, [bookingEnabled, loadHoursStat])
+
+  const link = `${window.location.origin}/reservar/${tenant.slug}`
+
+  async function toggle() {
+    const next = !bookingEnabled
+    setToggling(true)
+    const { error } = await supabase.from('tenant_config')
+      .update({ booking_enabled: next, updated_at: new Date().toISOString() })
+      .eq('tenant_id', tenant.id)
+    setToggling(false)
+    if (error) return toast.error('No se pudo guardar. ¿Corriste la migración de reservas en Supabase?')
+    setBookingEnabled(next)
+    toast.success(next ? 'Reservas online activadas' : 'Reservas online desactivadas')
+    if (next) setHoursOpen(true)   // recién activado → configurá los horarios
+  }
+
+  async function save() {
+    setSaving(true)
+    const payload = {
+      booking_slot_min:     Math.max(5, Number(cfg.booking_slot_min) || 15),
+      booking_lead_hours:   Math.max(0, Number(cfg.booking_lead_hours) || 0),
+      booking_horizon_days: Math.min(90, Math.max(1, Number(cfg.booking_horizon_days) || 21)),
+      booking_notice:       cfg.booking_notice?.trim() || null,
+      booking_whatsapp:     cfg.booking_whatsapp?.trim() || null,
+      updated_at: new Date().toISOString(),
+    }
+    let { error } = await supabase.from('tenant_config').update(payload).eq('tenant_id', tenant.id)
+    if (error) {
+      // la columna booking_whatsapp puede no existir todavía
+      const { booking_whatsapp: _wa, ...rest } = payload
+      ;({ error } = await supabase.from('tenant_config').update(rest).eq('tenant_id', tenant.id))
+    }
+    setSaving(false)
+    if (error) return toast.error('Error al guardar')
+    toast.success('Ajustes de reservas guardados')
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <CalendarClock size={18} className="text-cream/40 mt-0.5 shrink-0" />
+          <div>
+            <h3 className="font-display text-lg text-cream">Reservas online</h3>
+            <p className="text-cream/40 text-xs mt-1 max-w-md leading-relaxed">
+              Tus clientes reservan turno solos desde un enlace. El turno queda confirmado
+              al instante y lo ves en la Agenda. Desactivado, el enlace deja de funcionar.
+            </p>
+          </div>
+        </div>
+        <button onClick={toggle} disabled={toggling} className="shrink-0 mt-0.5 disabled:opacity-40">
+          {bookingEnabled
+            ? <ToggleRight size={32} className="text-emerald-400" />
+            : <ToggleLeft size={32} className="text-cream/30" />}
+        </button>
+      </div>
+
+      {bookingEnabled && (
+        <div className="mt-4 pt-4 border-t border-dark-300 flex flex-col gap-4">
+          <div>
+            <label className="label">Enlace para tus clientes</label>
+            <div className="flex gap-2">
+              <div className="input-dark flex-1 flex items-center gap-2 text-cream/70 text-xs truncate">
+                <Link2 size={13} className="shrink-0 text-cream/40" /> {link}
+              </div>
+              <button onClick={() => { navigator.clipboard?.writeText(link); toast.success('Enlace copiado') }}
+                      className="btn-gold px-3 shrink-0"><Copy size={15} /></button>
+            </div>
+            <p className="text-cream/30 text-xs mt-1">Pegalo en tu bio de Instagram, WhatsApp o Google.</p>
+          </div>
+
+          {/* Horarios de atención — se configuran en un modal */}
+          <div className="rounded-xl border border-dark-400/60 bg-dark-300/25 p-3.5 flex items-center gap-3">
+            <Clock size={18} className="text-cream/40 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-cream/80 text-sm font-medium">Horarios de atención</p>
+              <p className="text-xs mt-0.5">
+                {!hoursStat ? (
+                  <span className="text-cream/35">Definí qué días y horas trabaja cada barbero.</span>
+                ) : hoursStat.total === 0 ? (
+                  <span className="text-amber-400/80">Primero cargá barberos activos.</span>
+                ) : hoursStat.withHours === 0 ? (
+                  <span className="text-amber-400/80">Sin configurar — nadie tiene horario todavía.</span>
+                ) : hoursStat.withHours < hoursStat.total ? (
+                  <span className="text-amber-400/80">{hoursStat.withHours} de {hoursStat.total} barberos con horario.</span>
+                ) : (
+                  <span className="text-emerald-400/80">Los {hoursStat.total} barberos tienen horario cargado.</span>
+                )}
+              </p>
+            </div>
+            <button onClick={() => setHoursOpen(true)} className="btn-gold px-3 py-1.5 text-xs shrink-0">
+              Configurar
+            </button>
+          </div>
+
+          {cfg && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Anticipación mínima</label>
+                  <div className="relative">
+                    <input type="number" min="0" className="input-dark pr-12"
+                           value={cfg.booking_lead_hours}
+                           onChange={e => setCfg(c => ({ ...c, booking_lead_hours: e.target.value }))} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-cream/40 text-xs">horas</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Reservar hasta</label>
+                  <div className="relative">
+                    <input type="number" min="1" max="90" className="input-dark pr-12"
+                           value={cfg.booking_horizon_days}
+                           onChange={e => setCfg(c => ({ ...c, booking_horizon_days: e.target.value }))} />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-cream/40 text-xs">días</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className="label">Cada cuánto ofrecer un horario</label>
+                <select className="input-dark" value={cfg.booking_slot_min}
+                        onChange={e => setCfg(c => ({ ...c, booking_slot_min: e.target.value }))}>
+                  {[10, 15, 20, 30, 45, 60].map(n => <option key={n} value={n}>Cada {n} minutos</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">WhatsApp de la barbería</label>
+                <input className="input-dark" inputMode="tel" placeholder="Ej: 299 555 1234"
+                       value={cfg.booking_whatsapp || ''}
+                       onChange={e => setCfg(c => ({ ...c, booking_whatsapp: e.target.value }))} />
+                <p className="text-cream/30 text-xs mt-1">
+                  El número al que escribe el cliente al confirmar el turno. Si lo dejás vacío, se usa el teléfono de la barbería.
+                </p>
+              </div>
+              <div>
+                <label className="label">Mensaje para el cliente (opcional)</label>
+                <textarea className="input-dark min-h-[3.5rem]" placeholder="Ej: Los jueves 20% off pagando en efectivo."
+                          value={cfg.booking_notice || ''}
+                          onChange={e => setCfg(c => ({ ...c, booking_notice: e.target.value }))} />
+              </div>
+              <button onClick={save} disabled={saving} className="btn-gold flex items-center gap-2 self-start">
+                <Save size={15} /> {saving ? 'Guardando...' : 'Guardar ajustes'}
+              </button>
+              <p className="text-cream/30 text-xs">
+                La duración de cada servicio (lo que ocupa el turno) se define en “Servicios”, más abajo.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      <Modal open={hoursOpen} onClose={() => { setHoursOpen(false); loadHoursStat() }} title="Horarios de atención" size="lg">
+        <HoursEditor tenantId={tenant.id} onDone={() => { setHoursOpen(false); loadHoursStat() }} />
+      </Modal>
+    </div>
+  )
+}
+
+
 export default function ConfigPage() {
-  const { tenant, stockEnabled, setStockEnabled } = useAuth()
+  const { tenant, stockEnabled, setStockEnabled, bookingEnabled } = useAuth()
   const [adminPass, setAdminPass] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [savingPass, setSavingPass] = useState(false)
@@ -507,7 +759,12 @@ export default function ConfigPage() {
         </div>
       </div>
 
-      <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
+      <BookingSection tenant={tenant} />
+
+      <CatalogSection
+        title="Servicios" tableName="services" tenantId={tenant.id}
+        showPrice showDuration={bookingEnabled} showBookable={bookingEnabled}
+      />
       <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} />
       <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} />
       <CatalogSection title="Pagadores" tableName="expense_payers" tenantId={tenant.id} showPrice={false} />

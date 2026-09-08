@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import LoginPage from './pages/auth/LoginPage'
 import ProfileSelectPage from './pages/auth/ProfileSelectPage'
@@ -20,8 +20,17 @@ import ExpensesPage from './pages/admin/ExpensesPage'
 
 import BarberDraftPage from './pages/barber/BarberDraftPage'
 import BarberHistoryPage from './pages/barber/BarberHistoryPage'
+import BarberAgendaPage from './pages/barber/BarberAgendaPage'
+import BarberProfilePage from './pages/barber/BarberProfilePage'
+import BarberHoursPage from './pages/barber/BarberHoursPage'
 
 import ManualPage from './pages/ManualPage'
+
+import AppointmentsPage from './pages/admin/AppointmentsPage'
+import CustomersPage from './pages/admin/CustomersPage'
+
+const BookingPage = lazy(() => import('./pages/booking/BookingPage'))
+const ManageBookingPage = lazy(() => import('./pages/booking/ManageBookingPage'))
 
 // Solo Estadísticas se carga aparte: se lleva recharts (~370 kB), que no hace
 // falta descargar para usar el resto de la app.
@@ -64,11 +73,20 @@ function RequireBarber({ children }) {
 
 export default function App() {
   const { session, isRoot, isAdmin, isBarber, loading } = useAuth()
-  if (loading) return <LoadingScreen />
+  const location = useLocation()
+
+  // La reserva pública no depende de la sesión: se muestra sin esperar el
+  // chequeo de auth (que puede tardar con conexión lenta).
+  const isPublicBooking = location.pathname.startsWith('/reservar')
+
+  if (loading && !isPublicBooking) return <LoadingScreen />
 
   return (
     <Suspense fallback={<LoadingScreen />}>
     <Routes>
+      <Route path="/reservar/:slug" element={<BookingPage />} />
+      <Route path="/reservar/:slug/t/:id" element={<ManageBookingPage />} />
+
       <Route path="/login" element={
         session
           ? isRoot ? <Navigate to="/root" replace />
@@ -92,6 +110,8 @@ export default function App() {
         <Route index element={<AdminDashboard />} />
         <Route path="barbers" element={<BarbersPage />} />
         <Route path="config" element={<ConfigPage />} />
+        <Route path="appointments" element={<AppointmentsPage />} />
+        <Route path="clientes" element={<CustomersPage />} />
         <Route path="sales" element={<SalesPage />} />
         <Route path="drafts" element={<DraftsPage />} />
         <Route path="expenses" element={<ExpensesPage />} />
@@ -104,6 +124,9 @@ export default function App() {
       <Route path="/barber" element={<RequireBarber><BarberLayout /></RequireBarber>}>
         <Route index element={<BarberDraftPage />} />
         <Route path="history" element={<BarberHistoryPage />} />
+        <Route path="agenda" element={<BarberAgendaPage />} />
+        <Route path="perfil" element={<BarberProfilePage />} />
+        <Route path="horarios" element={<BarberHoursPage />} />
         <Route path="manual" element={<ManualPage compact />} />
       </Route>
 

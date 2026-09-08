@@ -1,20 +1,26 @@
-import { useEffect, useState } from 'react'
-import { Plus, Pencil, Trash2, UserX, UserCheck, Users, Check } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Plus, Pencil, Trash2, UserX, UserCheck, Users, Check, Camera, User } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { uploadAvatar } from '../../lib/photo'
 import Modal from '../../components/ui/Modal'
 import EmptyState from '../../components/ui/EmptyState'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import toast from 'react-hot-toast'
 
 function BarberForm({ barber, onSave, onClose }) {
-  const { tenant } = useAuth()
+  const { tenant, bookingEnabled } = useAuth()
   const [form, setForm] = useState({
     name: barber?.name || '',
     commission_pct: barber?.commission_pct || 50,
     password_hash: '',
     is_active: barber?.is_active ?? true,
+    bookable: barber?.bookable ?? true,
+    bio: barber?.bio || '',
   })
+  const [photoUrl, setPhotoUrl] = useState(barber?.photo_url || '')
+  const [photoFile, setPhotoFile] = useState(null)
+  const fileRef = useRef(null)
   const [loading, setLoading] = useState(false)
 
   // Config de servicios: { [service_id]: { enabled, pct } } — pct '' = usa el general
@@ -67,17 +73,31 @@ function BarberForm({ barber, onSave, onClose }) {
         name: form.name,
         commission_pct: Number(form.commission_pct),
         is_active: form.is_active,
+        bookable: form.bookable,
+        bio: form.bio.trim() || null,
         tenant_id: tenant.id,
         ...(form.password_hash ? { password_hash: form.password_hash } : {}),
       }
-      let barberId = barber?.id
-      if (barber) {
-        const { error } = await supabase.from('barbers').update(payload).eq('id', barber.id)
-        if (error) throw error
-      } else {
-        const { data, error } = await supabase.from('barbers').insert(payload).select().single()
-        if (error) throw error
-        barberId = data.id
+      const writeBarber = async p => {
+        if (barber) return supabase.from('barbers').update(p).eq('id', barber.id).select().single()
+        return supabase.from('barbers').insert(p).select().single()
+      }
+      let { data: saved, error } = await writeBarber(payload)
+      if (error && /bio/.test(error.message || '')) {
+        const { bio: _bio, ...rest } = payload
+        ;({ data: saved, error } = await writeBarber(rest))
+      }
+      if (error) throw error
+      const barberId = barber?.id || saved.id
+
+      // Foto (después de tener id): resize + subida a Storage
+      if (photoFile) {
+        try {
+          const url = await uploadAvatar(supabase, { tenantId: tenant.id, barberId, file: photoFile })
+          await supabase.from('barbers').update({ photo_url: url }).eq('id', barberId)
+        } catch (e) {
+          toast.error('Barbero guardado, pero la foto no se pudo subir: ' + (e.message || ''))
+        }
       }
 
       // Solo se guardan las excepciones: servicio oculto o con % propio.
@@ -107,11 +127,36 @@ function BarberForm({ barber, onSave, onClose }) {
     }
   }
 
+  function pickPhoto(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!/^image\//.test(file.type)) return toast.error('Elegí una imagen')
+    setPhotoFile(file)
+    setPhotoUrl(URL.createObjectURL(file))
+  }
+
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-4">
+        <div className="w-16 h-16 rounded-full bg-dark-300 border border-dark-400 overflow-hidden flex items-center justify-center shrink-0">
+          {photoUrl ? <img src={photoUrl} alt="" className="w-full h-full object-cover" /> : <User size={24} className="text-cream/30" />}
+        </div>
+        <div>
+          <button type="button" onClick={() => fileRef.current?.click()} className="btn-outline-gold text-sm flex items-center gap-2">
+            <Camera size={15} /> {photoUrl ? 'Cambiar foto' : 'Subir foto'}
+          </button>
+          <p className="text-cream/30 text-xs mt-1.5">Se sube al guardar. El barbero también puede cambiarla desde su perfil.</p>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickPhoto} />
+        </div>
+      </div>
       <div>
         <label className="label">Nombre completo *</label>
         <input className="input-dark" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Juan García" />
+      </div>
+      <div>
+        <label className="label">Descripción (opcional)</label>
+        <textarea className="input-dark min-h-[3.5rem]" placeholder="Aparece en la reserva online, debajo del nombre."
+                  value={form.bio} onChange={e => setForm(f => ({ ...f, bio: e.target.value }))} />
       </div>
       <div>
         <label className="label">Comisión general en servicios</label>
@@ -221,6 +266,18 @@ function BarberForm({ barber, onSave, onClose }) {
         </button>
         <span className="text-cream/70 text-sm">{form.is_active ? 'Barbero activo' : 'Barbero inactivo'}</span>
       </div>
+      {bookingEnabled && (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setForm(f => ({ ...f, bookable: !f.bookable }))}
+            className={`w-10 h-6 rounded-full transition-colors relative shrink-0 ${form.bookable ? 'bg-emerald-500' : 'bg-dark-400'}`}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.bookable ? 'translate-x-4' : ''}`} />
+          </button>
+          <span className="text-cream/70 text-sm">{form.bookable ? 'Aparece en reservas online' : 'Oculto en reservas online'}</span>
+        </div>
+      )}
       <div className="flex gap-3 pt-2">
         <button onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
         <button onClick={handleSave} disabled={loading} className="btn-gold flex-1">

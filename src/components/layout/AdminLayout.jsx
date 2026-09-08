@@ -1,29 +1,80 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Settings, ShoppingBag,
   FileText, Moon, BarChart2, LogOut, ReceiptText,
-  ChevronDown, Sun, MoreHorizontal, HelpCircle
+  ChevronDown, Sun, MoreHorizontal, HelpCircle, CalendarDays, Contact
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import BarberPoleMark from '../ui/BarberPoleMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
+import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
-const navItems = [
-  { to: '/admin',          label: 'Dashboard',     icon: LayoutDashboard, end: true },
-  { to: '/admin/sales',    label: 'Nueva venta',   icon: ShoppingBag },
-  { to: '/admin/barbers',  label: 'Barberos',      icon: Users },
-  { to: '/admin/drafts',   label: 'Registros',     icon: FileText },
-  { to: '/admin/expenses', label: 'Gastos',        icon: ReceiptText },
-  { to: '/admin/closing',  label: 'Cierre',        icon: Moon },
-  { to: '/admin/stats',    label: 'Estadísticas',  icon: BarChart2 },
-  { to: '/admin/config',   label: 'Configuración', icon: Settings },
+// El menú del admin, agrupado por para-qué-sirve-cada-cosa.
+//  primary    → aparece en la barra inferior del celular
+//  bookingOnly → solo si las reservas online están activadas
+const NAV_GROUPS = [
+  {
+    title: 'Resumen',
+    items: [
+      { to: '/admin',       label: 'Dashboard',    icon: LayoutDashboard, end: true, primary: true },
+      { to: '/admin/stats', label: 'Estadísticas', icon: BarChart2 },
+    ],
+  },
+  {
+    title: 'Día a día',
+    items: [
+      { to: '/admin/sales',        label: 'Nueva venta', icon: ShoppingBag, primary: true },
+      { to: '/admin/appointments', label: 'Agenda',      icon: CalendarDays, badgeKey: 'appts', bookingOnly: true, primary: true },
+      { to: '/admin/drafts',       label: 'Registros',   icon: FileText, primary: true },
+      { to: '/admin/expenses',     label: 'Gastos',      icon: ReceiptText },
+      { to: '/admin/closing',      label: 'Cierre',      icon: Moon },
+    ],
+  },
+  {
+    title: 'Clientes y equipo',
+    items: [
+      { to: '/admin/clientes', label: 'Clientes', icon: Contact, bookingOnly: true },
+      { to: '/admin/barbers',  label: 'Barberos', icon: Users },
+    ],
+  },
+  {
+    title: 'Ajustes',
+    items: [
+      { to: '/admin/config', label: 'Configuración', icon: Settings },
+    ],
+  },
 ]
 
+const BARBER_PATHS = ['/admin', '/admin/sales']
 const manualItem = { to: '/admin/manual', label: 'Manual', icon: HelpCircle }
 
-function SidebarLink({ to, label, icon: Icon, end }) {
+// Cantidad de turnos vigentes de hoy que todavía no pasaron — para el badge del menú
+function useTodayAppointments(enabled, tenantId) {
+  const [count, setCount] = useState(0)
+  const location = useLocation()
+  useEffect(() => {
+    if (!enabled || !tenantId) { setCount(0); return }
+    let alive = true
+    ;(async () => {
+      const now = new Date()
+      const endOfDay = new Date(now); endOfDay.setHours(23, 59, 59, 999)
+      const { count: c } = await supabase
+        .from('appointments')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId)
+        .in('status', ['pending', 'confirmed'])
+        .gte('starts_at', now.toISOString())
+        .lte('starts_at', endOfDay.toISOString())
+      if (alive) setCount(c || 0)
+    })()
+    return () => { alive = false }
+  }, [enabled, tenantId, location.pathname])
+  return count
+}
+
+function SidebarLink({ to, label, icon: Icon, end, badge }) {
   return (
     <NavLink
       to={to}
@@ -43,6 +94,11 @@ function SidebarLink({ to, label, icon: Icon, end }) {
           )}
           <Icon size={16} strokeWidth={isActive ? 2.2 : 1.8} />
           <span>{label}</span>
+          {badge > 0 && (
+            <span className="ml-auto text-[10px] font-bold bg-gold/20 text-gold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+              {badge}
+            </span>
+          )}
         </>
       )}
     </NavLink>
@@ -66,10 +122,29 @@ function ThemeToggle() {
 }
 
 export default function AdminLayout() {
-  const { signOut, tenant, isAdmin, isBarber, clearBarberSession, barberSession } = useAuth()
+  const { signOut, tenant, isAdmin, isBarber, bookingEnabled, clearBarberSession, barberSession } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const apptsBadge = useTodayAppointments(isAdmin && bookingEnabled, tenant?.id)
+  const badgeFor = key => (key === 'appts' ? apptsBadge : 0)
+
+  // Grupos visibles según rol y si hay reservas
+  const groups = useMemo(() => {
+    return NAV_GROUPS
+      .map(g => ({
+        ...g,
+        items: g.items.filter(i =>
+          (isAdmin || BARBER_PATHS.includes(i.to)) &&
+          (!i.bookingOnly || bookingEnabled),
+        ),
+      }))
+      .filter(g => g.items.length > 0)
+  }, [isAdmin, bookingEnabled])
+
+  const flatItems = useMemo(() => groups.flatMap(g => g.items), [groups])
+  const primaryItems = useMemo(() => flatItems.filter(i => i.primary), [flatItems])
+  const grouped = isAdmin  // los barberos ven un menú corto sin títulos
 
   async function handleLogout() {
     clearBarberSession()
@@ -85,7 +160,6 @@ export default function AdminLayout() {
 
   const displayName = isBarber ? barberSession?.barber?.name : (tenant?.name || 'Admin')
   const role = isBarber ? 'Barbero' : 'Administrador'
-  const visibleItems = isAdmin ? navItems : navItems.filter(i => i.to === '/admin' || i.to === '/admin/sales')
 
   return (
     <div className="min-h-screen flex flex-col bg-dark-100">
@@ -144,12 +218,18 @@ export default function AdminLayout() {
       <div className="flex flex-1">
 
         {/* ── Sidebar desktop ── */}
-        <aside className="hidden md:flex flex-col w-56 bg-dark-200/40 border-r border-dark-400/30 pt-3 pb-4 sticky top-[57px] h-[calc(100vh-57px)]">
-          <p className="text-[10px] text-cream/30 uppercase tracking-widest px-6 pt-2 pb-2 font-bold">Menú</p>
-          <div className="flex flex-col gap-0.5">
-            {visibleItems.map(item => <SidebarLink key={item.to} {...item} />)}
-          </div>
-          <div className="mt-auto pt-2 border-t border-dark-400/30">
+        <aside className="hidden md:flex flex-col w-56 bg-dark-200/40 border-r border-dark-400/30 pt-2 pb-4 sticky top-[57px] h-[calc(100vh-57px)] overflow-y-auto">
+          {groups.map((g, gi) => (
+            <div key={g.title} className={gi === 0 ? 'pt-1' : 'pt-3'}>
+              {grouped && (
+                <p className="text-[10px] text-cream/30 uppercase tracking-widest px-6 pb-1.5 font-bold">{g.title}</p>
+              )}
+              <div className="flex flex-col gap-0.5">
+                {g.items.map(item => <SidebarLink key={item.to} {...item} badge={badgeFor(item.badgeKey)} />)}
+              </div>
+            </div>
+          ))}
+          <div className="mt-auto pt-3 border-t border-dark-400/30">
             <SidebarLink {...manualItem} />
           </div>
         </aside>
@@ -164,33 +244,44 @@ export default function AdminLayout() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 border-t border-dark-400/40 z-30 pb-[env(safe-area-inset-bottom,0px)]"
            style={{ background: 'rgb(var(--surface-card))' }}>
 
-        {/* Bandeja "Más" */}
+        {/* Bandeja "Más" — menú completo, agrupado */}
         {moreOpen && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
-            <div className="absolute bottom-full left-0 right-0 z-40 border-t border-dark-400/40"
+            <div className="absolute bottom-full left-0 right-0 z-40 border-t border-dark-400/40 max-h-[72vh] overflow-y-auto"
                  style={{ background: 'rgb(var(--surface-card))', boxShadow: 'var(--sh-modal)' }}>
-              {visibleItems.slice(5).map(({ to, label, icon: Icon, end }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  onClick={() => setMoreOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-5 py-3.5 text-sm font-medium transition-colors border-b border-dark-400/25 ${
-                      isActive ? 'text-gold' : 'text-cream/60 hover:text-cream'
-                    }`
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <Icon size={18} strokeWidth={isActive ? 2.2 : 1.6} />
-                      <span>{label}</span>
-                    </>
+              {groups.map(g => (
+                <div key={g.title}>
+                  {grouped && (
+                    <p className="text-[10px] text-cream/30 uppercase tracking-widest px-5 pt-3 pb-1 font-bold">{g.title}</p>
                   )}
-                </NavLink>
+                  {g.items.map(({ to, label, icon: Icon, end, badgeKey }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      end={end}
+                      onClick={() => setMoreOpen(false)}
+                      className={({ isActive }) =>
+                        `flex items-center gap-3 px-5 py-3 text-sm font-medium transition-colors border-b border-dark-400/20 ${
+                          isActive ? 'text-gold' : 'text-cream/65 hover:text-cream'
+                        }`
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon size={18} strokeWidth={isActive ? 2.2 : 1.6} />
+                          <span>{label}</span>
+                          {badgeFor(badgeKey) > 0 && (
+                            <span className="ml-auto text-[10px] font-bold bg-gold/20 text-gold rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+                              {badgeFor(badgeKey)}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
               ))}
-              {/* Manual — siempre pegado abajo de todo */}
               <NavLink
                 to={manualItem.to}
                 onClick={() => setMoreOpen(false)}
@@ -212,7 +303,7 @@ export default function AdminLayout() {
         )}
 
         <div className="flex justify-around">
-          {visibleItems.slice(0, 5).map(({ to, label, icon: Icon, end }) => (
+          {primaryItems.map(({ to, label, icon: Icon, end, badgeKey }) => (
             <NavLink
               key={to}
               to={to}
@@ -228,6 +319,11 @@ export default function AdminLayout() {
                 <>
                   {isActive && (
                     <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-gold rounded-full" />
+                  )}
+                  {badgeFor(badgeKey) > 0 && (
+                    <span className="absolute top-1 right-2 min-w-[1rem] h-4 px-1 text-[9px] font-bold bg-gold text-ink rounded-full flex items-center justify-center">
+                      {badgeFor(badgeKey)}
+                    </span>
                   )}
                   <Icon size={19} strokeWidth={isActive ? 2.2 : 1.6} />
                   <span>{label.split(' ')[0]}</span>

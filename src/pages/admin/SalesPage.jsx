@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { format } from 'date-fns'
 import { Check, Plus, Minus, Store, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -139,6 +140,20 @@ export default function SalesPage() {
   }, [tenant?.id, catalogKey])
 
   function retryCatalog() { setCatalogError(false); setCatalogKey(k => k + 1) }
+
+  // Prefill al venir desde la Agenda ("Cargar como venta")
+  const location = useLocation()
+  const prefillDone = useRef(false)
+  useEffect(() => {
+    const pf = location.state?.prefill
+    if (!pf || !catalogReady || prefillDone.current) return
+    prefillDone.current = true
+    if (pf.barberId) chooseBarber(pf.barberId)
+    if (pf.serviceId) setSelServices({ [pf.serviceId]: 1 })
+    setTab('venta')
+    window.history.replaceState({}, '')
+    toast.success('Datos del turno cargados — revisá y confirmá la venta')
+  }, [catalogReady, location.state])
 
   // Elegir barbero (o "solo local"): descarta los servicios que ese barbero no hace
   function chooseBarber(barberId) {

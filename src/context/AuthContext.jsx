@@ -60,7 +60,7 @@ export function AuthProvider({ children }) {
       try {
         const { data } = await supabase
           .from('tenant_config')
-          .select('stock_enabled')
+          .select('stock_enabled, booking_enabled')
           .eq('tenant_id', tid)
           .maybeSingle()
         if (active) setTenantConfig(data || null)
@@ -163,17 +163,22 @@ export function AuthProvider({ children }) {
   const isAdmin = profile?.role === 'admin'
   const isBarber = !!barberSession?.barber && !!session
   const stockEnabled = !!tenantConfig?.stock_enabled
+  const bookingEnabled = !!tenantConfig?.booking_enabled
 
   // Lo usa Configuración para reflejar el switch sin recargar la app
   function setStockEnabled(v) {
     setTenantConfig(c => ({ ...(c || {}), stock_enabled: !!v }))
   }
+  function setBookingEnabled(v) {
+    setTenantConfig(c => ({ ...(c || {}), booking_enabled: !!v }))
+  }
 
   return (
     <AuthContext.Provider value={{
       session, profile, tenant, tenantConfig, barberSession,
-      loading, isRoot, isAdmin, isBarber, stockEnabled,
-      signIn, signOut, setBarber, clearBarberSession, loadProfile, setStockEnabled,
+      loading, isRoot, isAdmin, isBarber, stockEnabled, bookingEnabled,
+      signIn, signOut, setBarber, clearBarberSession, loadProfile,
+      setStockEnabled, setBookingEnabled,
       rememberProfileUnlock, isProfileUnlocked,
     }}>
       {children}
