@@ -1,0 +1,16 @@
+# Config de build para Netlify (se versiona acá, no solo en el panel).
+# Las variables VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (y VITE_ENV opcional)
+# se cargan en el panel de cada sitio, nunca en el repo.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA: cualquier ruta la resuelve React Router
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

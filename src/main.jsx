@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import EnvRibbon from './components/ui/EnvRibbon'
 import App from './App.jsx'
 import './index.css'
 
@@ -13,6 +14,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <ThemeProvider>
         <AuthProvider>
           <App />
+          <EnvRibbon />
           <Toaster
             position="top-right"
             toastOptions={{
