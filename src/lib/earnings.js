@@ -176,6 +176,98 @@ export function groupProductsByPct(saleItems) {
   return [...map.values()].sort((a, b) => b.pct - a.pct)
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Comisiones por barbero en BEBIDAS (barber_drinks)
+//
+// Igual que productos: una bebida es 100% local por defecto.
+// Sin fila en barber_drinks → 0% para el barbero. Con fila → ese % puntual.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Filas de barber_drinks → { [drink_id]: fila } */
+export function drinkOverridesMap(rows) {
+  return Object.fromEntries((rows || []).map(r => [r.drink_id, r]))
+}
+
+/** Filas de barber_drinks de varios barberos → { [barber_id]: { [drink_id]: fila } } */
+export function drinkOverridesByBarber(rows) {
+  const out = {}
+  for (const r of rows || []) {
+    ;(out[r.barber_id] ||= {})[r.drink_id] = r
+  }
+  return out
+}
+
+/** ¿Tiene % propio para esa bebida? (si no, es 100% local) */
+export function hasDrinkCommission(drink, overrides) {
+  return Number(overrides?.[drink.id]?.commission_pct) > 0
+}
+
+/** % que se lleva el barbero por esa bebida (0 = todo para el local) */
+export function drinkPct(drink, barber, overrides) {
+  if (!barber) return 0
+  const own = overrides?.[drink.id]?.commission_pct
+  return own != null ? Number(own) : 0
+}
+
+/**
+ * Reparte las bebidas seleccionadas entre barbero y local, igual que
+ * splitProducts pero para bebidas.
+ * @returns { total, barberAmt, shopAmt, lines }
+ */
+export function splitDrinks(sel, drinks, barber, overrides) {
+  const lines = []
+  let total = 0
+  let barberAmt = 0
+
+  for (const [id, qty] of Object.entries(sel || {})) {
+    const drink = drinks.find(d => d.id === id)
+    if (!drink) continue
+    const amount    = Number(drink.price) * qty
+    const pct       = drinkPct(drink, barber, overrides)
+    const forBarber = amount * pct / 100
+    total     += amount
+    barberAmt += forBarber
+    lines.push({ drink, qty, amount, pct, forBarber, custom: pct > 0 })
+  }
+
+  return { total, barberAmt, shopAmt: total - barberAmt, lines }
+}
+
+/** Ítems de bebida listos para insertar, guardando el % aplicado a cada uno */
+export function buildDrinkItems(sel, drinks, barber, overrides, key) {
+  return Object.entries(sel || {}).filter(([id]) => drinks.some(d => d.id === id)).map(([id, qty]) => {
+    const drink = drinks.find(d => d.id === id)
+    return {
+      ...key,
+      item_type:      'drink',
+      item_id:        id,
+      name:           drink.name,
+      price:          drink.price,
+      quantity:       qty,
+      commission_pct: barber ? drinkPct(drink, barber, overrides) : null,
+    }
+  })
+}
+
+/**
+ * Igual que groupProductsByPct, pero para ítems de bebida ya guardados.
+ * @returns [{ pct, amount, barberAmt, count }] ordenado por % descendente
+ */
+export function groupDrinksByPct(saleItems) {
+  const map = new Map()
+  for (const it of saleItems) {
+    if (it.item_type !== 'drink') continue
+    const pct    = it.commission_pct != null ? Number(it.commission_pct) : 0
+    const amount = Number(it.subtotal != null ? it.subtotal : Number(it.price) * it.quantity)
+    const prev   = map.get(pct) || { pct, amount: 0, barberAmt: 0, count: 0 }
+    prev.amount    += amount
+    prev.barberAmt += amount * pct / 100
+    prev.count     += it.quantity
+    map.set(pct, prev)
+  }
+  return [...map.values()].sort((a, b) => b.pct - a.pct)
+}
+
 /**
  * Agrupa ítems de servicio ya guardados por el % con el que se pagaron.
  * Los ítems viejos (sin commission_pct) caen en el % general del barbero.

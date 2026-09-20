@@ -9,6 +9,7 @@ import CommissionBadge from '../../components/ui/CommissionBadge'
 import {
   splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesMap,
   splitProducts, buildProductItems, productPct, productOverridesMap,
+  splitDrinks, buildDrinkItems, drinkPct, drinkOverridesMap,
 } from '../../lib/earnings'
 import { qAll } from '../../lib/query'
 import PhotoLightbox from '../../components/ui/PhotoLightbox'
@@ -157,6 +158,7 @@ export default function BarberDraftPage() {
   const [paymentMethods, setPaymentMethods] = useState([])
   const [overrides, setOverrides]       = useState({})
   const [productOverrides, setProductOverrides] = useState({})
+  const [drinkOverrides, setDrinkOverrides] = useState({})
   const [catalogReady, setCatalogReady] = useState(false)
 
   const [selServices, setSelServices]   = useState({})
@@ -189,20 +191,30 @@ export default function BarberDraftPage() {
         if (barber?.id) {
           builds.push(x => x.from('barber_services').select('*').eq('barber_id', barber.id))
           builds.push(x => x.from('barber_products').select('*').eq('barber_id', barber.id))
+          builds.push(x => x.from('barber_drinks').select('*').eq('barber_id', barber.id))
         }
         let results
         try {
           results = await qAll(builds)
         } catch (e) {
-          // barber_products puede no existir todavía (falta correr la migración)
-          if (!/barber_products/.test(e?.message || '')) throw e
-          results = await qAll(builds.slice(0, 5))
+          // barber_products / barber_drinks pueden no existir todavía (falta correr la migración)
+          if (/barber_drinks/.test(e?.message || '')) {
+            try {
+              results = [...await qAll(builds.slice(0, 6)), []]
+            } catch (e2) {
+              if (!/barber_products/.test(e2?.message || '')) throw e2
+              results = await qAll(builds.slice(0, 5))
+            }
+          } else if (/barber_products/.test(e?.message || '')) {
+            results = await qAll(builds.slice(0, 5))
+          } else throw e
         }
-        const [s, p, d, pm, bs = [], bp = []] = results
+        const [s, p, d, pm, bs = [], bp = [], bd = []] = results
         if (!alive) return
         const ov = overridesMap(bs || [])
         setOverrides(ov)
         setProductOverrides(productOverridesMap(bp || []))
+        setDrinkOverrides(drinkOverridesMap(bd || []))
         setServices(enabledServices(s || [], ov))
         setProducts(p || [])
         setDrinks(d || [])
@@ -273,7 +285,8 @@ export default function BarberDraftPage() {
   const tipAmt        = Number(tip) || 0
   const mySplit       = splitServices(selServices, services, barber, overrides)
   const myProductSplit = splitProducts(selProducts, products, barber, productOverrides)
-  const myEarnings    = mySplit.barberAmt + myProductSplit.barberAmt + tipAmt
+  const myDrinkSplit  = splitDrinks(selDrinks, drinks, barber, drinkOverrides)
+  const myEarnings    = mySplit.barberAmt + myProductSplit.barberAmt + myDrinkSplit.barberAmt + tipAmt
   const baseTotal     = totalServices + totalProducts + totalDrinks
   const selectedPm    = paymentMethods.find(p => p.id === paymentMethod)
   const surchargePct  = Number(selectedPm?.surcharge_pct) || 0
@@ -286,13 +299,10 @@ export default function BarberDraftPage() {
 
   function buildItems() {
     return [
-      // Guarda el % que le corresponde al barbero por cada servicio (y producto, si tiene)
+      // Guarda el % que le corresponde al barbero por cada servicio (y producto/bebida, si tiene)
       ...buildServiceItems(selServices, services, barber, overrides),
       ...buildProductItems(selProducts, products, barber, productOverrides),
-      ...Object.entries(selDrinks).map(([id, qty]) => {
-        const item = drinks.find(d => d.id === id)
-        return { item_type: 'drink', item_id: id, name: item.name, price: item.price, quantity: qty }
-      }),
+      ...buildDrinkItems(selDrinks, drinks, barber, drinkOverrides),
     ]
   }
 
@@ -481,9 +491,11 @@ export default function BarberDraftPage() {
           <button className="flex items-center justify-between w-full" onClick={() => setShowBebidas(v => !v)}>
             <div className="flex items-center gap-2">
               <label className="label mb-0 pointer-events-none">Bebidas</label>
-              <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
-                <Store size={10} /> 100% local
-              </span>
+              {!Object.values(drinkOverrides).some(o => Number(o.commission_pct) > 0) && (
+                <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
+                  <Store size={10} /> 100% local
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {totalDrinks > 0 && <span className="text-gold text-sm font-bold">${totalDrinks.toLocaleString('es-AR')}</span>}
@@ -492,7 +504,12 @@ export default function BarberDraftPage() {
           </button>
           {showBebidas && (
             <div className="mt-2">
-              <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn} />
+              <ItemPicker
+                items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn}
+                commissionOf={d => drinkPct(d, barber, drinkOverrides) > 0
+                  ? { pct: drinkPct(d, barber, drinkOverrides), isDefault: false }
+                  : null}
+              />
             </div>
           )}
         </div>

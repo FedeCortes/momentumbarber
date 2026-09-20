@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import EmptyState from '../../components/ui/EmptyState'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
 import CommissionBadge from '../../components/ui/CommissionBadge'
-import { groupByPct, groupProductsByPct } from '../../lib/earnings'
+import { groupByPct, groupProductsByPct, groupDrinksByPct } from '../../lib/earnings'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
@@ -187,6 +187,7 @@ export default function BarberHistoryPage() {
     const items = draft.draft_items || []
     const commission = groupByPct(items, barber).reduce((sum, g) => sum + g.barberAmt, 0)
       + groupProductsByPct(items).reduce((sum, g) => sum + g.barberAmt, 0)
+      + groupDrinksByPct(items).reduce((sum, g) => sum + g.barberAmt, 0)
     return commission + Number(draft.tip || 0)
   }
 

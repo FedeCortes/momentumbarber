@@ -367,6 +367,15 @@ create policy "config_tenant"   on public.tenant_config for all using (tenant_id
 -- ============================================================
 
 -- ============================================================
+-- COMISIÓN POR BARBERO EN BEBIDAS
+-- El DDL completo vive en supabase_migration_drinks_commission.sql.
+-- Resumen:
+--   · barber_drinks (barber_id, drink_id, commission_pct; sin fila = 0%,
+--                    es decir 100% local — mismo espíritu que barber_products)
+--                    RLS root + tenant
+-- ============================================================
+
+-- ============================================================
 -- DATOS SEMILLA — servicios y métodos de pago por defecto
 -- (se insertan al crear un tenant desde el código de la app)
 -- ============================================================

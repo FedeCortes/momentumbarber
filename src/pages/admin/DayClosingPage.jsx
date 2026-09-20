@@ -6,7 +6,7 @@ import { es } from 'date-fns/locale'
 import EmptyState from '../../components/ui/EmptyState'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
 import Modal from '../../components/ui/Modal'
-import { groupByPct, groupProductsByPct } from '../../lib/earnings'
+import { groupByPct, groupProductsByPct, groupDrinksByPct } from '../../lib/earnings'
 import { qAll } from '../../lib/query'
 import toast from 'react-hot-toast'
 
@@ -198,8 +198,11 @@ export default function DayClosingPage() {
   // Comisión pagada a barberos por productos de vitrina con % propio (por defecto, vitrina es 100% local)
   const productBarberCut = groupProductsByPct(sales.flatMap(s => s.sale_items || [])).reduce((sum, g) => sum + g.barberAmt, 0)
   const shopFromProducts = totalProducts - productBarberCut
+  // Comisión pagada a barberos por bebidas con % propio (por defecto, bebidas es 100% local)
+  const drinkBarberCut = groupDrinksByPct(sales.flatMap(s => s.sale_items || [])).reduce((sum, g) => sum + g.barberAmt, 0)
+  const shopFromDrinks = totalDrinks - drinkBarberCut
   // Lo que retiene el local de los servicios: su % de comisión + servicios de ventas sin barbero (100% local)
-  const shopFromServices = totalShop - shopFromProducts - totalDrinks - totalSurcharge - shopTips - totalConsumption
+  const shopFromServices = totalShop - shopFromProducts - shopFromDrinks - totalSurcharge - shopTips - totalConsumption
   // Lo que efectivamente se les pagó a los barberos por comisión de servicios (sin contar propinas)
   const totalBarberServiceCommission = totalServicesAll - shopFromServices
 
@@ -227,12 +230,13 @@ export default function DayClosingPage() {
     // Desglose por % aplicado; la comisión sale de lo guardado, no se recalcula
     const bItems = bSales.flatMap(s => s.sale_items || [])
     const rates      = groupByPct(bItems, b)
-    // Comisión de vitrina (si tiene % propio en algún producto) — aparte de la de servicios
+    // Comisión de vitrina y bebidas (si tiene % propio en algún ítem) — aparte de la de servicios
     const productCommission = groupProductsByPct(bItems).reduce((sum, g) => sum + g.barberAmt, 0)
-    const commission = earnings - tips - productCommission
+    const drinkCommission   = groupDrinksByPct(bItems).reduce((sum, g) => sum + g.barberAmt, 0)
+    const commission = earnings - tips - productCommission - drinkCommission
     // Lo que efectivamente se le paga: comisión + propinas, menos lo que consumió a precio de barbero
     const netEarnings = earnings - consumption
-    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, rates, commission, productCommission, consumption, netEarnings, sales: bSales }
+    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, rates, commission, productCommission, drinkCommission, consumption, netEarnings, sales: bSales }
   }).filter(Boolean)
 
   // ── Ventas sin barbero ──
@@ -261,7 +265,7 @@ export default function DayClosingPage() {
 
     if (byBarber.length) {
       lines.push(``, `👤 A PAGAR:`)
-      byBarber.forEach(({ barber, count, svcs, tips, earnings, rates, commission, productCommission, consumption, netEarnings }) => {
+      byBarber.forEach(({ barber, count, svcs, tips, earnings, rates, commission, productCommission, drinkCommission, consumption, netEarnings }) => {
         const rateLabel = rates.length > 1
           ? `comisión mixta: ${rates.map(r => `${r.pct}%`).join(' / ')}`
           : `${rates[0]?.pct ?? barber.commission_pct}% comisión`
@@ -270,6 +274,7 @@ export default function DayClosingPage() {
         if (rates.length > 1) rates.forEach(r => lines.push(`      ${r.pct}% sobre $${fmt(r.amount)} → $${fmt(r.barberAmt)}`))
         lines.push(`   Comisión:         $${fmt(commission)}`)
         if (productCommission > 0) lines.push(`   Comisión vitrina: $${fmt(productCommission)}`)
+        if (drinkCommission > 0) lines.push(`   Comisión bebidas: $${fmt(drinkCommission)}`)
         if (tips > 0) lines.push(`   Propinas:         $${fmt(tips)}`)
         if (consumption > 0) lines.push(`   Consumo propio:   -$${fmt(consumption)}`)
         lines.push(`   → COBRAR:          $${fmt(netEarnings)}`)
@@ -281,7 +286,7 @@ export default function DayClosingPage() {
       shopFromServices > 0 ? `   Servicios (comisión${noBarberSales.length ? ' + sin barbero' : ''}): $${fmt(shopFromServices)}` : null,
       shopTips > 0 ? `   Propinas sin barbero: $${fmt(shopTips)}` : null,
       totalProducts > 0 ? `   Vitrina:            $${fmt(shopFromProducts)}${productBarberCut > 0 ? ` (+ $${fmt(productBarberCut)} a barberos)` : ''}` : null,
-      totalDrinks   > 0 ? `   Bebidas:            $${fmt(totalDrinks)}` : null,
+      totalDrinks   > 0 ? `   Bebidas:            $${fmt(shopFromDrinks)}${drinkBarberCut > 0 ? ` (+ $${fmt(drinkBarberCut)} a barberos)` : ''}` : null,
       totalConsumption > 0 ? `   Consumo de barberos: $${fmt(totalConsumption)}` : null,
       totalSurcharge > 0 ? `   Recargo pagos:      $${fmt(totalSurcharge)}` : null,
     )
@@ -389,7 +394,7 @@ export default function DayClosingPage() {
             <div>
               <SectionLabel>A pagarle a cada barbero</SectionLabel>
               <div className="flex flex-col gap-3">
-                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, rates, commission, productCommission, consumption, netEarnings, sales: bSales }) => (
+                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, rates, commission, productCommission, drinkCommission, consumption, netEarnings, sales: bSales }) => (
                   <div key={barber.id} className="card">
                     {/* Encabezado */}
                     <div className="flex items-center gap-3 mb-4">
@@ -440,7 +445,21 @@ export default function DayClosingPage() {
                               <span className="text-cream/70 text-sm shrink-0">${fmt(productCommission)}</span>
                             </div>
                           )}
-                          {drinks   > 0 && <ExcludedRow icon={Droplets} label="Bebidas vendidas" amount={drinks} />}
+                          {drinks - drinkCommission > 0 && (
+                            <ExcludedRow icon={Droplets} label="Bebidas vendidas" amount={drinks - drinkCommission} />
+                          )}
+                          {drinkCommission > 0 && (
+                            <div className="flex items-center justify-between px-4 py-2 border-b border-dark-400/15">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Percent size={11} className="text-violet-300/70 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-cream/60 text-xs">Comisión de bebidas</p>
+                                  <p className="text-cream/25 text-[11px]">% propio en alguna bebida</p>
+                                </div>
+                              </div>
+                              <span className="text-cream/70 text-sm shrink-0">${fmt(drinkCommission)}</span>
+                            </div>
+                          )}
                           {surcharge > 0 && <ExcludedRow icon={ArrowRightLeft} label="Recargo método de pago" amount={surcharge} />}
                         </>
                       )}
@@ -540,7 +559,12 @@ export default function DayClosingPage() {
                   />
                 )}
                 {totalDrinks > 0 && (
-                  <MoneyRow icon={Droplets} label="Bebidas" sub="100% local" amount={totalDrinks} />
+                  <MoneyRow
+                    icon={Droplets}
+                    label="Bebidas"
+                    sub={drinkBarberCut > 0 ? `$${fmt(drinkBarberCut)} pagado a barberos por % propio` : '100% local'}
+                    amount={shopFromDrinks}
+                  />
                 )}
                 {totalConsumption > 0 && (
                   <MoneyRow icon={Coins} label="Consumo de barberos" sub="Precio especial, ya descontado a cada barbero" amount={totalConsumption} />

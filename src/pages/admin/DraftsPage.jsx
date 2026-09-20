@@ -10,6 +10,7 @@ import CommissionBadge from '../../components/ui/CommissionBadge'
 import {
   splitServices, buildServiceItems, groupByPct, servicePct, hasCustomPct, isServiceEnabled, overridesByBarber,
   splitProducts, buildProductItems, groupProductsByPct, productPct, productOverridesByBarber,
+  splitDrinks, buildDrinkItems, groupDrinksByPct, drinkPct, drinkOverridesByBarber,
 } from '../../lib/earnings'
 import { applyStockDelta } from '../../lib/stock'
 import { qAll } from '../../lib/query'
@@ -23,7 +24,7 @@ const rowTotal = r => Number(r.total || 0) + Number(r.surcharge_amt || 0)
 // Línea de detalle: muestra con qué % se pagó cada servicio
 function ItemLine({ it, barber }) {
   const pct  = it.commission_pct != null ? Number(it.commission_pct) : null
-  const show = (it.item_type === 'service' && pct != null) || (it.item_type === 'product' && pct > 0)
+  const show = (it.item_type === 'service' && pct != null) || ((it.item_type === 'product' || it.item_type === 'drink') && pct > 0)
   return (
     <div className="flex justify-between gap-2 text-sm">
       <span className="text-cream/60 min-w-0">
@@ -42,7 +43,7 @@ function ItemLine({ it, barber }) {
 }
 
 // ── Borrador — solo referencia, con copiado a oficial y edición/borrado para admin ──
-function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, onChange, showDate, isAdmin, onDelete, compact }) {
+function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barberDrks, onChange, showDate, isAdmin, onDelete, compact }) {
   const { stockEnabled } = useAuth()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState(null)
@@ -88,10 +89,13 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, onCh
       const prdCommissionAmt = barber
         ? groupProductsByPct(draftItems || []).reduce((sum, g) => sum + g.barberAmt, 0)
         : 0
-      const commissionAmt  = svcCommissionAmt + prdCommissionAmt
+      const drkCommissionAmt = barber
+        ? groupDrinksByPct(draftItems || []).reduce((sum, g) => sum + g.barberAmt, 0)
+        : 0
+      const commissionAmt  = svcCommissionAmt + prdCommissionAmt + drkCommissionAmt
       const barberEarnings = barber ? commissionAmt + tipAmt : 0
       // Sin barbero, la propina queda para el local
-      const shopEarnings   = (totalServices - svcCommissionAmt) + (totalProducts - prdCommissionAmt) + totalDrinks + draftSurcharge + (barber ? 0 : tipAmt)
+      const shopEarnings   = (totalServices - svcCommissionAmt) + (totalProducts - prdCommissionAmt) + (totalDrinks - drkCommissionAmt) + draftSurcharge + (barber ? 0 : tipAmt)
 
       const { data: sale, error: saleErr } = await supabase.from('sales').insert({
         tenant_id:         draft.tenant_id,
@@ -116,7 +120,7 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, onCh
             sale_id: sale.id,
             commission_pct: !barber ? null
               : rest.item_type === 'service' ? (rest.commission_pct != null ? rest.commission_pct : barber.commission_pct)
-              : rest.item_type === 'product' ? (rest.commission_pct != null ? rest.commission_pct : 0)
+              : (rest.item_type === 'product' || rest.item_type === 'drink') ? (rest.commission_pct != null ? rest.commission_pct : 0)
               : null,
           }))
         )
@@ -177,12 +181,16 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, onCh
   const editBarberObj = barbers.find(b => b.id === editBarber) || null
   const eOverrides   = editBarberObj ? barberSvcs?.[editBarberObj.id] : null
   const eProductOverrides = editBarberObj ? barberPrds?.[editBarberObj.id] : null
+  const eDrinkOverrides = editBarberObj ? barberDrks?.[editBarberObj.id] : null
   const eSplit       = splitServices(selServices, catalog.services, editBarberObj, eOverrides)
   const eCommissionOf = s => editBarberObj
     ? { pct: servicePct(s, editBarberObj, eOverrides), isDefault: !hasCustomPct(s, eOverrides), barberName: editBarberObj.name.split(' ')[0] }
     : null
   const eProductCommissionOf = p => (editBarberObj && productPct(p, editBarberObj, eProductOverrides) > 0)
     ? { pct: productPct(p, editBarberObj, eProductOverrides), isDefault: false, barberName: editBarberObj.name.split(' ')[0] }
+    : null
+  const eDrinkCommissionOf = d => (editBarberObj && drinkPct(d, editBarberObj, eDrinkOverrides) > 0)
+    ? { pct: drinkPct(d, editBarberObj, eDrinkOverrides), isDefault: false, barberName: editBarberObj.name.split(' ')[0] }
     : null
   const eTotalSvc    = calcAmt(selServices, catalog.services)
   const eTotalPrd    = calcAmt(selProducts, catalog.products)
@@ -213,10 +221,7 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, onCh
       const newItems = [
         ...buildServiceItems(selServices, catalog.services, editBarberObj, eOverrides, { draft_id: draft.id }),
         ...buildProductItems(selProducts, catalog.products, editBarberObj, eProductOverrides, { draft_id: draft.id }),
-        ...Object.entries(selDrinks).map(([id, qty]) => {
-          const it = catalog.drinks.find(d => d.id === id)
-          return { draft_id: draft.id, item_type: 'drink', item_id: id, name: it.name, price: it.price, quantity: qty }
-        }),
+        ...buildDrinkItems(selDrinks, catalog.drinks, editBarberObj, eDrinkOverrides, { draft_id: draft.id }),
       ]
 
       await supabase.from('draft_items').delete().eq('draft_id', draft.id)
@@ -344,7 +349,7 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, onCh
                 <label className="label mb-0">Bebidas</label>
                 {eTotalDrk > 0 && <span className="text-gold text-sm font-semibold">${eTotalDrk.toLocaleString('es-AR')}</span>}
               </div>
-              <EditItemPicker items={catalog.drinks} selected={selDrinks} onToggle={(it, d) => toggleItem(setSelDrinks, it, d)} />
+              <EditItemPicker items={catalog.drinks} selected={selDrinks} onToggle={(it, d) => toggleItem(setSelDrinks, it, d)} commissionOf={eDrinkCommissionOf} />
             </div>
           )}
           <div className="border-t border-dark-400/40 pt-4 flex flex-col gap-4">
@@ -466,7 +471,7 @@ function EditItemPicker({ items, selected, onToggle, commissionOf }) {
 }
 
 // ── Venta oficial — con edición/borrado para admin ────────────────────────────
-function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, isAdmin, onRefresh, showDate, compact }) {
+function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, barberDrks, isAdmin, onRefresh, showDate, compact }) {
   const { stockEnabled } = useAuth()
   const [open, setOpen]         = useState(false)
   const [items, setItems]       = useState(null)
@@ -552,15 +557,20 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, isAdmi
   const selectedBarber   = barbers.find(b => b.id === editBarber) || null
   const sOverrides       = selectedBarber ? barberSvcs?.[selectedBarber.id] : null
   const sProductOverrides = selectedBarber ? barberPrds?.[selectedBarber.id] : null
+  const sDrinkOverrides   = selectedBarber ? barberDrks?.[selectedBarber.id] : null
   const sSplit           = splitServices(selServices, catalog.services, selectedBarber, sOverrides)
   const sProductSplit    = splitProducts(selProducts, catalog.products, selectedBarber, sProductOverrides)
+  const sDrinkSplit      = splitDrinks(selDrinks, catalog.drinks, selectedBarber, sDrinkOverrides)
   const sCommissionOf    = s => selectedBarber
     ? { pct: servicePct(s, selectedBarber, sOverrides), isDefault: !hasCustomPct(s, sOverrides), barberName: selectedBarber.name.split(' ')[0] }
     : null
   const sProductCommissionOf = p => (selectedBarber && productPct(p, selectedBarber, sProductOverrides) > 0)
     ? { pct: productPct(p, selectedBarber, sProductOverrides), isDefault: false, barberName: selectedBarber.name.split(' ')[0] }
     : null
-  const barberEarningsPreview = selectedBarber ? sSplit.barberAmt + sProductSplit.barberAmt + tipAmt : 0
+  const sDrinkCommissionOf = d => (selectedBarber && drinkPct(d, selectedBarber, sDrinkOverrides) > 0)
+    ? { pct: drinkPct(d, selectedBarber, sDrinkOverrides), isDefault: false, barberName: selectedBarber.name.split(' ')[0] }
+    : null
+  const barberEarningsPreview = selectedBarber ? sSplit.barberAmt + sProductSplit.barberAmt + sDrinkSplit.barberAmt + tipAmt : 0
 
   async function handleSave() {
     if (!Object.keys(selServices).length && !Object.keys(selProducts).length && !Object.keys(selDrinks).length) {
@@ -569,10 +579,10 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, isAdmi
     if (!editPayment) return toast.error('Elegí el método de pago')
     setSaving(true)
     try {
-      // Reparto servicio por servicio (y producto por producto) según la config de ese barbero
-      const barberEarnings = selectedBarber ? sSplit.barberAmt + sProductSplit.barberAmt + tipAmt : 0
+      // Reparto servicio por servicio (y producto/bebida por producto/bebida) según la config de ese barbero
+      const barberEarnings = selectedBarber ? sSplit.barberAmt + sProductSplit.barberAmt + sDrinkSplit.barberAmt + tipAmt : 0
       // Sin barbero, la propina queda para el local
-      const shopEarnings   = sSplit.shopAmt + sProductSplit.shopAmt + totalDrinks + sSurchargeAmt + (selectedBarber ? 0 : tipAmt)
+      const shopEarnings   = sSplit.shopAmt + sProductSplit.shopAmt + sDrinkSplit.shopAmt + sSurchargeAmt + (selectedBarber ? 0 : tipAmt)
 
       await supabase.from('sales').update({
         payment_method_id: editPayment || null,
@@ -589,10 +599,7 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, isAdmi
       const newItems = [
         ...buildServiceItems(selServices, catalog.services, selectedBarber, sOverrides, { sale_id: sale.id }),
         ...buildProductItems(selProducts, catalog.products, selectedBarber, sProductOverrides, { sale_id: sale.id }),
-        ...Object.entries(selDrinks).map(([id, qty]) => {
-          const it = catalog.drinks.find(d => d.id === id)
-          return { sale_id: sale.id, item_type: 'drink', item_id: id, name: it.name, price: it.price, quantity: qty }
-        }),
+        ...buildDrinkItems(selDrinks, catalog.drinks, selectedBarber, sDrinkOverrides, { sale_id: sale.id }),
       ]
 
       // Ajuste de stock: repongo lo viejo y descuento lo nuevo (efecto neto = diferencia)
@@ -738,7 +745,7 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, isAdmi
                 <label className="label mb-0">Bebidas</label>
                 {totalDrinks > 0 && <span className="text-gold text-sm font-semibold">${totalDrinks.toLocaleString('es-AR')}</span>}
               </div>
-              <EditItemPicker items={catalog.drinks} selected={selDrinks} onToggle={(it, d) => toggleItem(setSelDrinks, it, d)} />
+              <EditItemPicker items={catalog.drinks} selected={selDrinks} onToggle={(it, d) => toggleItem(setSelDrinks, it, d)} commissionOf={sDrinkCommissionOf} />
             </div>
           )}
 
@@ -840,7 +847,7 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, isAdmi
 }
 
 // ── Card de un barbero — columna principal, solo ventas oficiales ────────────
-function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods, barberSvcs, barberPrds, isAdmin, isSingle, onRefresh }) {
+function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods, barberSvcs, barberPrds, barberDrks, isAdmin, isSingle, onRefresh }) {
   const officialTotal = sales.reduce((s, r) => s + Number(r.total) + Number(r.surcharge_amt || 0), 0)
   const match         = draftTotal > 0 && officialTotal > 0 && draftTotal === officialTotal
 
@@ -877,7 +884,7 @@ function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods
         ? <p className="text-cream/25 text-sm text-center py-3">Sin ventas oficiales este día</p>
         : <div className="flex flex-col gap-2">
             {sales.map(s => (
-              <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} barberPrds={barberPrds} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} />
+              <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} barberPrds={barberPrds} barberDrks={barberDrks} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} />
             ))}
           </div>
       }
@@ -886,7 +893,7 @@ function OfficialBarberCard({ barber, sales, draftTotal, barbers, paymentMethods
 }
 
 // ── Card de comparación — las dos listas, una al lado de la otra ─────────────
-function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods, barberSvcs, barberPrds, isAdmin, isSingle, onRefresh, addSaleLink }) {
+function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods, barberSvcs, barberPrds, barberDrks, isAdmin, isSingle, onRefresh, addSaleLink }) {
   const officialTotal = sales.reduce((s, r) => s + rowTotal(r), 0)
   const draftTotal    = drafts.reduce((s, r) => s + rowTotal(r), 0)
 
@@ -918,7 +925,7 @@ function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods
           {sales.length === 0
             ? <p className="text-cream/25 text-xs text-center py-3">Sin ventas</p>
             : sales.map(s => (
-                <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} barberPrds={barberPrds} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} compact />
+                <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} barberPrds={barberPrds} barberDrks={barberDrks} isAdmin={isAdmin} onRefresh={onRefresh} showDate={!isSingle} compact />
               ))
           }
         </div>
@@ -926,7 +933,7 @@ function CompareCard({ avatar, name, sub, sales, drafts, barbers, paymentMethods
           {drafts.length === 0
             ? <p className="text-cream/25 text-xs text-center py-3">Sin registros</p>
             : drafts.map(d => (
-                <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} barberPrds={barberPrds} onChange={onRefresh} onDelete={onRefresh} showDate={!isSingle} isAdmin={isAdmin} compact />
+                <DraftRow key={d.id} draft={d} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} barberPrds={barberPrds} barberDrks={barberDrks} onChange={onRefresh} onDelete={onRefresh} showDate={!isSingle} isAdmin={isAdmin} compact />
               ))
           }
         </div>
@@ -956,6 +963,7 @@ export default function DraftsPage() {
   const [paymentMethods, setPaymentMethods] = useState([])
   const [barberSvcs, setBarberSvcs] = useState({})
   const [barberPrds, setBarberPrds] = useState({})
+  const [barberDrks, setBarberDrks] = useState({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
@@ -978,21 +986,31 @@ export default function DraftsPage() {
           s => s.from('drafts').select('*').eq('tenant_id', tenant.id).gte('draft_date', from).lte('draft_date', to).order('created_at'),
           s => s.from('sales').select('*').eq('tenant_id', tenant.id).gte('sale_date', from).lte('sale_date', to).order('created_at'),
           s => s.from('barber_products').select('*').eq('tenant_id', tenant.id),
+          s => s.from('barber_drinks').select('*').eq('tenant_id', tenant.id),
         ]
         let results
         try {
           results = await qAll(builds)
         } catch (e) {
-          // barber_products puede no existir todavía (falta correr la migración)
-          if (!/barber_products/.test(e?.message || '')) throw e
-          results = [...await qAll(builds.slice(0, 5)), []]
+          // barber_products / barber_drinks pueden no existir todavía (falta correr la migración)
+          if (/barber_drinks/.test(e?.message || '')) {
+            try {
+              results = [...await qAll(builds.slice(0, 6)), []]
+            } catch (e2) {
+              if (!/barber_products/.test(e2?.message || '')) throw e2
+              results = [...await qAll(builds.slice(0, 5)), [], []]
+            }
+          } else if (/barber_products/.test(e?.message || '')) {
+            results = [...await qAll(builds.slice(0, 5)), [], []]
+          } else throw e
         }
-        const [b, pm, bs, draftData, salesData, bp] = results
+        const [b, pm, bs, draftData, salesData, bp, bd] = results
         if (!alive) return
         setBarbers(b || [])
         setPaymentMethods(pm || [])
         setBarberSvcs(overridesByBarber(bs || []))
         setBarberPrds(productOverridesByBarber(bp || []))
+        setBarberDrks(drinkOverridesByBarber(bd || []))
         setDrafts(draftData || [])
         setSales(salesData || [])
       } catch {
@@ -1031,7 +1049,7 @@ export default function DraftsPage() {
           drafts={drafts.filter(d => d.barber_id === barber.id)}
           barbers={barbers}
           paymentMethods={paymentMethods}
-          barberSvcs={barberSvcs} barberPrds={barberPrds}
+          barberSvcs={barberSvcs} barberPrds={barberPrds} barberDrks={barberDrks}
           isAdmin={isAdmin}
           isSingle={isSingle}
           onRefresh={load}
@@ -1052,7 +1070,7 @@ export default function DraftsPage() {
           drafts={orphanDrafts}
           barbers={barbers}
           paymentMethods={paymentMethods}
-          barberSvcs={barberSvcs} barberPrds={barberPrds}
+          barberSvcs={barberSvcs} barberPrds={barberPrds} barberDrks={barberDrks}
           isAdmin={isAdmin}
           isSingle={isSingle}
           onRefresh={load}
@@ -1112,7 +1130,7 @@ export default function DraftsPage() {
                     draftTotal={drafts.filter(d => d.barber_id === barber.id).reduce((s, d) => s + Number(d.total) + Number(d.surcharge_amt || 0), 0)}
                     barbers={barbers}
                     paymentMethods={paymentMethods}
-                    barberSvcs={barberSvcs} barberPrds={barberPrds}
+                    barberSvcs={barberSvcs} barberPrds={barberPrds} barberDrks={barberDrks}
                     isAdmin={isAdmin}
                     isSingle={isSingle}
                     onRefresh={load}
@@ -1132,7 +1150,7 @@ export default function DraftsPage() {
                     </div>
                     <div className="flex flex-col gap-2">
                       {shopOnlySales.map(s => (
-                        <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} barberPrds={barberPrds} isAdmin={isAdmin} onRefresh={load} showDate={!isSingle} />
+                        <SaleRow key={s.id} sale={s} barbers={barbers} paymentMethods={paymentMethods} barberSvcs={barberSvcs} barberPrds={barberPrds} barberDrks={barberDrks} isAdmin={isAdmin} onRefresh={load} showDate={!isSingle} />
                       ))}
                     </div>
                   </div>

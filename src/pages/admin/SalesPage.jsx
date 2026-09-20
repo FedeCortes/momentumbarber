@@ -7,6 +7,7 @@ import CommissionBadge from '../../components/ui/CommissionBadge'
 import {
   splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesByBarber,
   splitProducts, buildProductItems, productPct, productOverridesByBarber,
+  splitDrinks, buildDrinkItems, drinkPct, drinkOverridesByBarber,
 } from '../../lib/earnings'
 import { applyStockDelta, checkStock } from '../../lib/stock'
 import { qAll } from '../../lib/query'
@@ -107,6 +108,7 @@ export default function SalesPage() {
   const [catalogKey, setCatalogKey] = useState(0)
   const [barberSvcs, setBarberSvcs] = useState({})
   const [barberPrds, setBarberPrds] = useState({})
+  const [barberDrks, setBarberDrks] = useState({})
 
   const [selectedBarber, setSelectedBarber] = useState('')
   const [shopOnly, setShopOnly] = useState(false)
@@ -141,16 +143,25 @@ export default function SalesPage() {
           x => x.from('payment_methods').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order'),
           x => x.from('barber_services').select('*').eq('tenant_id', tenant.id),
           x => x.from('barber_products').select('*').eq('tenant_id', tenant.id),
+          x => x.from('barber_drinks').select('*').eq('tenant_id', tenant.id),
         ]
         let results
         try {
           results = await qAll(builds0)
         } catch (e) {
-          // barber_products puede no existir todavía (falta correr la migración)
-          if (!/barber_products/.test(e?.message || '')) throw e
-          results = [...await qAll(builds0.slice(0, 6)), []]
+          // barber_products / barber_drinks pueden no existir todavía (falta correr la migración)
+          if (/barber_drinks/.test(e?.message || '')) {
+            try {
+              results = [...await qAll(builds0.slice(0, 7)), []]
+            } catch (e2) {
+              if (!/barber_products/.test(e2?.message || '')) throw e2
+              results = [...await qAll(builds0.slice(0, 6)), [], []]
+            }
+          } else if (/barber_products/.test(e?.message || '')) {
+            results = [...await qAll(builds0.slice(0, 6)), [], []]
+          } else throw e
         }
-        const [b, s, p, d, pm, bs, bp] = results
+        const [b, s, p, d, pm, bs, bp, bd] = results
         if (!alive) return
         setBarbers(b || [])
         setServices(s || [])
@@ -159,6 +170,7 @@ export default function SalesPage() {
         setPaymentMethods(pm || [])
         setBarberSvcs(overridesByBarber(bs || []))
         setBarberPrds(productOverridesByBarber(bp || []))
+        setBarberDrks(drinkOverridesByBarber(bd || []))
         setCatalogReady(true)
       } catch {
         if (alive) setCatalogError(true)
@@ -201,11 +213,13 @@ export default function SalesPage() {
   const barber       = barbers.find(b => b.id === selectedBarber) || null
   const overrides    = barber ? barberSvcs[barber.id] : null
   const productOverrides = barber ? barberPrds[barber.id] : null
+  const drinkOverrides = barber ? barberDrks[barber.id] : null
   const chosen       = !!barber || shopOnly
   // Al barbero solo le aparecen los servicios que tiene habilitados
   const visibleServices = barber ? enabledServices(services, overrides) : services
   const split        = splitServices(selServices, services, barber, overrides)
   const productSplit = splitProducts(selProducts, products, barber, productOverrides)
+  const drinkSplit    = splitDrinks(selDrinks, drinks, barber, drinkOverrides)
   const totalServices = calcTotal(selServices, services)
   const totalProducts = calcTotal(selProducts, products)
   const totalDrinks   = calcTotal(selDrinks, drinks)
@@ -280,15 +294,15 @@ export default function SalesPage() {
     setLoading(true)
 
     try {
-      // El reparto se calcula servicio por servicio (y producto por producto): cada uno puede tener su propio %
-      const barberEarnings = barber ? split.barberAmt + productSplit.barberAmt + tipAmt : 0
+      // El reparto se calcula servicio por servicio (y producto/bebida por producto/bebida): cada uno puede tener su propio %
+      const barberEarnings = barber ? split.barberAmt + productSplit.barberAmt + drinkSplit.barberAmt + tipAmt : 0
       // Sin barbero, la propina queda para el local
-      const shopEarnings   = split.shopAmt + productSplit.shopAmt + totalDrinks + surchargeAmt + (barber ? 0 : tipAmt)
+      const shopEarnings   = split.shopAmt + productSplit.shopAmt + drinkSplit.shopAmt + surchargeAmt + (barber ? 0 : tipAmt)
 
       const items = [
         ...buildServiceItems(selServices, services, barber, overrides),
         ...buildProductItems(selProducts, products, barber, productOverrides),
-        ...buildItems(selDrinks, drinks, 'drink'),
+        ...buildDrinkItems(selDrinks, drinks, barber, drinkOverrides),
       ]
 
       if (stockEnabled) {
@@ -497,9 +511,9 @@ export default function SalesPage() {
           />
         )}
 
-        {barber && (hasServices || productSplit.lines.some(l => l.custom)) && (
+        {barber && (hasServices || productSplit.lines.some(l => l.custom) || drinkSplit.lines.some(l => l.custom)) && (
           <div className="mt-4 pt-4 border-t border-dark-300">
-            {/* Desglose de ganancias — servicio (y producto con % propio) por ítem */}
+            {/* Desglose de ganancias — servicio (y producto/bebida con % propio) por ítem */}
             <div className="flex flex-col gap-2">
                 <div className="flex flex-col gap-1 bg-dark-300/50 rounded-lg px-3 py-2">
                   {split.lines.map(l => (
@@ -520,6 +534,15 @@ export default function SalesPage() {
                       </span>
                     </div>
                   ))}
+                  {drinkSplit.lines.filter(l => l.custom).map(l => (
+                    <div key={`d-${l.drink.id}`} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="text-cream/50 truncate">{l.drink.name}{l.qty > 1 ? ` ×${l.qty}` : ''}</span>
+                      <span className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-violet-300 font-semibold">{l.pct}%</span>
+                        <span className="text-gold/80">${l.forBarber.toLocaleString('es-AR')}</span>
+                      </span>
+                    </div>
+                  ))}
                   {tipAmt > 0 && (
                     <div className="flex items-center justify-between gap-2 text-xs border-t border-dark-400/40 pt-1 mt-0.5">
                       <span className="text-cream/50">Propina</span>
@@ -533,11 +556,11 @@ export default function SalesPage() {
                 <div className="flex gap-3 text-xs">
                   <div className="flex-1 bg-dark-300 rounded-lg px-3 py-2">
                     <p className="text-cream/40 mb-0.5">Para {barber.name}</p>
-                    <p className="text-gold font-medium">${(split.barberAmt + productSplit.barberAmt + tipAmt).toLocaleString('es-AR')}</p>
+                    <p className="text-gold font-medium">${(split.barberAmt + productSplit.barberAmt + drinkSplit.barberAmt + tipAmt).toLocaleString('es-AR')}</p>
                   </div>
                 <div className="flex-1 bg-dark-300 rounded-lg px-3 py-2">
                   <p className="text-cream/40 mb-0.5">Para el local</p>
-                  <p className="text-cream font-medium">${(split.shopAmt + productSplit.shopAmt).toLocaleString('es-AR')}</p>
+                  <p className="text-cream font-medium">${(split.shopAmt + productSplit.shopAmt + drinkSplit.shopAmt).toLocaleString('es-AR')}</p>
                 </div>
               </div>
             </div>
@@ -570,12 +593,12 @@ export default function SalesPage() {
         )}
       </div>
 
-      {/* ── Bebidas (100% local) ── */}
+      {/* ── Bebidas (100% local, salvo que el barbero tenga % en alguna) ── */}
       <div className="card mb-3">
         <button className="flex items-center justify-between w-full" onClick={() => setShowBebidas(v => !v)}>
           <div className="flex items-center gap-2">
             <label className="label mb-0 pointer-events-none">Bebidas</label>
-            <ShopBadge />
+            {!barber && <ShopBadge />}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {totalDrinks > 0 && <span className="text-gold text-sm">${totalDrinks.toLocaleString('es-AR')}</span>}
@@ -584,7 +607,12 @@ export default function SalesPage() {
         </button>
         {showBebidas && (
           <div className="mt-3">
-            <ItemPicker items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn} />
+            <ItemPicker
+              items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn}
+              commissionOf={d => (barber && drinkPct(d, barber, drinkOverrides) > 0)
+                ? { pct: drinkPct(d, barber, drinkOverrides), isDefault: false, barberName: barber.name.split(' ')[0] }
+                : null}
+            />
           </div>
         )}
       </div>
