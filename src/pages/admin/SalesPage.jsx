@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
-import { Check, Plus, Minus, Store, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react'
+import { Check, Plus, Minus, Store, ChevronDown, ChevronUp, AlertTriangle, ImageOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import CommissionBadge from '../../components/ui/CommissionBadge'
@@ -12,7 +12,7 @@ import { applyStockDelta, checkStock } from '../../lib/stock'
 import { qAll } from '../../lib/query'
 import toast from 'react-hot-toast'
 
-function ItemPicker({ items, selected, onToggle, commissionOf, stockOf }) {
+function ItemPicker({ items, selected, onToggle, commissionOf, stockOf, showPhoto }) {
   if (items.length === 0) return (
     <p className="text-cream/30 text-xs text-center py-2">Sin ítems configurados</p>
   )
@@ -31,6 +31,13 @@ function ItemPicker({ items, selected, onToggle, commissionOf, stockOf }) {
               out ? 'border-dark-400/50 opacity-50' : isSelected ? 'border-gold bg-gold/8' : 'border-dark-400 hover:border-dark-500'
             }`}
           >
+            {showPhoto && (
+              <div className="w-12 h-12 rounded-lg bg-dark-300 border border-dark-400/70 overflow-hidden shrink-0 flex items-center justify-center">
+                {item.image_url
+                  ? <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+                  : <ImageOff size={16} className="text-cream/20" />}
+              </div>
+            )}
             <button
               onClick={() => onToggle(item, -1)}
               className={`w-7 h-7 rounded-md flex items-center justify-center transition-colors shrink-0 ${
@@ -399,7 +406,7 @@ export default function SalesPage() {
                 <span className="text-violet-300 text-sm">${calcTotal(consProducts, barberProducts).toLocaleString('es-AR')}</span>
               )}
             </div>
-            <ItemPicker items={barberProducts} selected={consProducts} onToggle={(item, d) => toggle(setConsProducts, item, d)} stockOf={stockFn} />
+            <ItemPicker items={barberProducts} selected={consProducts} onToggle={(item, d) => toggle(setConsProducts, item, d)} stockOf={stockFn} showPhoto />
           </div>
 
           <div className="card mb-3">
@@ -547,6 +554,7 @@ export default function SalesPage() {
           <div className="mt-3">
             <ItemPicker
               items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} stockOf={stockFn}
+              showPhoto
               commissionOf={p => (barber && productPct(p, barber, productOverrides) > 0)
                 ? { pct: productPct(p, barber, productOverrides), isDefault: false, barberName: barber.name.split(' ')[0] }
                 : null}

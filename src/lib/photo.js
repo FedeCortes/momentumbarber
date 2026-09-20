@@ -43,3 +43,10 @@ export async function uploadCatalogPhoto(supabase, { tenantId, tableName, itemId
   const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path)
   return `${data.publicUrl}?v=${Date.now()}`
 }
+
+// Borra la foto de un ítem del catálogo del bucket (best-effort: si el
+// archivo ya no está, no rompe — igual hay que limpiar image_url en la fila).
+export async function removeCatalogPhoto(supabase, { tenantId, tableName, itemId }) {
+  const path = `${tenantId}/${tableName}/${itemId}.jpg`
+  await supabase.storage.from('catalog-photos').remove([path])
+}

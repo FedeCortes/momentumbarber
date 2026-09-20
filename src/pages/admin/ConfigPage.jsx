@@ -3,11 +3,12 @@ import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, 
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { stockLevel } from '../../lib/stock'
-import { uploadCatalogPhoto } from '../../lib/photo'
+import { uploadCatalogPhoto, removeCatalogPhoto } from '../../lib/photo'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import toast from 'react-hot-toast'
 
-// Miniatura de foto de un ítem del catálogo (producto). Tocarla sube/cambia la foto.
+// Miniatura de foto de un ítem del catálogo (producto). Tocarla sube/cambia
+// la foto; la cruz roja la quita. w-14/h-14 = 56px, bien visible en la lista.
 function ItemPhoto({ item, tableName, tenantId, onChange }) {
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
@@ -29,27 +30,56 @@ function ItemPhoto({ item, tableName, tenantId, onChange }) {
     }
   }
 
+  async function remove(e) {
+    e.stopPropagation()
+    if (uploading) return
+    setUploading(true)
+    try {
+      await removeCatalogPhoto(supabase, { tenantId, tableName, itemId: item.id })
+      const { error } = await supabase.from(tableName).update({ image_url: null }).eq('id', item.id)
+      if (error) throw error
+      toast.success('Foto eliminada')
+      onChange?.()
+    } catch (err) {
+      toast.error(err.message || 'No se pudo eliminar la foto')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => fileRef.current?.click()}
-      disabled={uploading}
-      title={item.image_url ? 'Cambiar foto' : 'Agregar foto'}
-      className="relative w-9 h-9 rounded-lg bg-dark-300 border border-dark-400 overflow-hidden shrink-0 flex items-center justify-center group"
-    >
-      {item.image_url
-        ? <img src={item.image_url} alt="" className="w-full h-full object-cover" />
-        : <ImageOff size={14} className="text-cream/25" />}
-      <span className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-colors">
-        <Camera size={12} className="text-white opacity-0 group-hover:opacity-100" />
-      </span>
-      {uploading && (
-        <span className="absolute inset-0 bg-black/50 flex items-center justify-center">
-          <span className="w-3.5 h-3.5 border-2 border-cream/70 border-t-transparent rounded-full animate-spin" />
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        title={item.image_url ? 'Cambiar foto' : 'Agregar foto'}
+        className="relative w-14 h-14 rounded-xl bg-dark-300 border border-dark-400 overflow-hidden flex items-center justify-center group"
+      >
+        {item.image_url
+          ? <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+          : <ImageOff size={18} className="text-cream/25" />}
+        <span className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-colors">
+          <Camera size={15} className="text-white opacity-0 group-hover:opacity-100" />
         </span>
+        {uploading && (
+          <span className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <span className="w-4 h-4 border-2 border-cream/70 border-t-transparent rounded-full animate-spin" />
+          </span>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={pick} />
+      </button>
+      {item.image_url && !uploading && (
+        <button
+          type="button"
+          onClick={remove}
+          title="Quitar foto"
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white flex items-center justify-center shadow"
+        >
+          <X size={11} strokeWidth={3} />
+        </button>
       )}
-      <input ref={fileRef} type="file" accept="image/*" hidden onChange={pick} />
-    </button>
+    </div>
   )
 }
 
@@ -296,7 +326,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                     </button>
                   </div>
                   {(showPrice || showBarberPrice || showStock) && (
-                    <div className={`grid gap-2 ${showPhoto ? 'pl-12' : ''} ${
+                    <div className={`grid gap-2 ${showPhoto ? 'pl-[68px]' : ''} ${
                       { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-2 sm:grid-cols-3' }[
                         [showPrice, showBarberPrice, showStock].filter(Boolean).length
                       ] || 'grid-cols-1'
@@ -369,7 +399,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                 </div>
               )}
               {editId !== item.id && showStock && (
-                <div className={showPhoto ? 'pl-12 mt-1' : 'mt-1'}>
+                <div className={showPhoto ? 'pl-[68px] mt-1' : 'mt-1'}>
                   <StockControl item={item} tableName={tableName} onChange={load} />
                 </div>
               )}
