@@ -225,13 +225,14 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
           </button>
         </div>
         {(showBarberPrice || showStock) && (
-          <div className="grid grid-cols-2 gap-2 mt-2">
+          <div className="grid grid-cols-2 gap-2 mt-3">
             {showBarberPrice && (
               <div>
+                <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1 truncate">Precio barbero</span>
                 <input
                   type="number" min="0"
-                  className="input-dark w-full"
-                  placeholder="Precio barbero"
+                  className="input-dark w-full !px-2.5"
+                  placeholder="0"
                   value={quickBarberPrice}
                   onChange={e => setQuickBarberPrice(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -240,10 +241,11 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
             )}
             {showStock && (
               <div>
+                <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1 truncate">Stock inicial</span>
                 <input
                   type="number" min="0"
-                  className="input-dark w-full"
-                  placeholder="Stock inicial"
+                  className="input-dark w-full !px-2.5"
+                  placeholder="0"
                   value={quickStock}
                   onChange={e => setQuickStock(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -301,10 +303,10 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                     }`}>
                       {showPrice && (
                         <div>
-                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1">Precio</span>
+                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1 truncate">Precio</span>
                           <input
                             type="number" min="0"
-                            className="input-dark w-full py-1.5 text-sm"
+                            className="input-dark w-full py-1.5 text-sm !px-2.5"
                             value={editPrice}
                             onChange={e => setEditPrice(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
@@ -313,10 +315,10 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                       )}
                       {showBarberPrice && (
                         <div>
-                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1">Precio barbero</span>
+                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1 truncate">Precio barbero</span>
                           <input
                             type="number" min="0"
-                            className="input-dark w-full py-1.5 text-sm"
+                            className="input-dark w-full py-1.5 text-sm !px-2.5"
                             placeholder={item.price != null ? String(Number(item.price)) : ''}
                             value={editBarberPrice}
                             onChange={e => setEditBarberPrice(e.target.value)}
@@ -326,10 +328,10 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                       )}
                       {showStock && (
                         <div>
-                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1">Stock mínimo</span>
+                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1 truncate">Stock mínimo</span>
                           <input
                             type="number" min="0"
-                            className="input-dark w-full py-1.5 text-sm"
+                            className="input-dark w-full py-1.5 text-sm !px-2.5"
                             placeholder="0"
                             value={editMinStock}
                             onChange={e => setEditMinStock(e.target.value)}
