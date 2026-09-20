@@ -193,57 +193,65 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
     <div className="card mb-4">
       <h3 className="font-display text-lg text-cream mb-4">{title}</h3>
 
-      {/* Fila de carga rápida */}
-      <div className="flex gap-2 mb-4 flex-wrap">
-        <input
-          ref={nameRef}
-          className="input-dark flex-1 min-w-[8rem]"
-          placeholder="Nombre..."
-          value={quickName}
-          onChange={e => setQuickName(e.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        {showPrice && (
+      {/* Carga rápida */}
+      <div className="rounded-xl border border-dark-400/50 bg-dark-300/25 p-3 mb-4">
+        <div className="flex gap-2">
           <input
-            ref={priceRef}
-            type="number"
-            min="0"
-            className="input-dark w-24"
-            placeholder="Precio"
-            value={quickPrice}
-            onChange={e => setQuickPrice(e.target.value)}
+            ref={nameRef}
+            className="input-dark flex-1 min-w-0"
+            placeholder="Nombre del ítem..."
+            value={quickName}
+            onChange={e => setQuickName(e.target.value)}
             onKeyDown={handleKeyDown}
           />
+          {showPrice && (
+            <input
+              ref={priceRef}
+              type="number"
+              min="0"
+              className="input-dark w-24 shrink-0"
+              placeholder="Precio"
+              value={quickPrice}
+              onChange={e => setQuickPrice(e.target.value)}
+              onKeyDown={handleKeyDown}
+            />
+          )}
+          <button
+            onClick={quickAdd}
+            disabled={adding || !quickName.trim()}
+            className="btn-gold px-4 shrink-0 flex items-center gap-1"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
+        {(showBarberPrice || showStock) && (
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            {showBarberPrice && (
+              <div>
+                <input
+                  type="number" min="0"
+                  className="input-dark w-full"
+                  placeholder="Precio barbero"
+                  value={quickBarberPrice}
+                  onChange={e => setQuickBarberPrice(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
+              </div>
+            )}
+            {showStock && (
+              <div>
+                <input
+                  type="number" min="0"
+                  className="input-dark w-full"
+                  placeholder="Stock inicial"
+                  value={quickStock}
+                  onChange={e => setQuickStock(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                />
+              </div>
+            )}
+          </div>
         )}
-        {showBarberPrice && (
-          <input
-            type="number"
-            min="0"
-            className="input-dark w-28"
-            placeholder="Precio barbero"
-            value={quickBarberPrice}
-            onChange={e => setQuickBarberPrice(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-        )}
-        {showStock && (
-          <input
-            type="number"
-            min="0"
-            className="input-dark w-20"
-            placeholder="Stock"
-            value={quickStock}
-            onChange={e => setQuickStock(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
-        )}
-        <button
-          onClick={quickAdd}
-          disabled={adding || !quickName.trim()}
-          className="btn-gold px-4 shrink-0 flex items-center gap-1"
-        >
-          <Plus size={16} />
-        </button>
       </div>
       {showBarberPrice && (
         <p className="text-cream/30 text-xs -mt-3 mb-4">Precio barbero: lo que paga un barbero por consumo propio. Vacío = usa el precio normal.</p>
@@ -266,65 +274,86 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       ) : (
         <div className="flex flex-col divide-y divide-dark-300">
           {items.map(item => (
-            <div key={item.id} className="flex items-center gap-3 py-2.5 flex-wrap">
-              {showPhoto && <ItemPhoto item={item} tableName={tableName} tenantId={tenantId} onChange={load} />}
+            <div key={item.id} className="py-3 first:pt-0 last:pb-0">
               {editId === item.id ? (
-                <>
-                  <input
-                    className="input-dark flex-1 py-1 text-sm min-w-[8rem]"
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
-                    autoFocus
-                  />
-                  {showPrice && (
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center gap-3">
+                    {showPhoto && <ItemPhoto item={item} tableName={tableName} tenantId={tenantId} onChange={load} />}
                     <input
-                      type="number"
-                      className="input-dark w-24 py-1 text-sm"
-                      value={editPrice}
-                      onChange={e => setEditPrice(e.target.value)}
+                      className="input-dark flex-1 min-w-0 py-1.5 text-sm"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                      autoFocus
                     />
+                    <button onClick={() => saveEdit(item)} className="text-emerald-400 hover:text-emerald-300 p-1.5 shrink-0">
+                      <Check size={16} />
+                    </button>
+                    <button onClick={() => setEditId(null)} className="text-cream/30 hover:text-cream/60 p-1.5 shrink-0">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  {(showPrice || showBarberPrice || showStock) && (
+                    <div className={`grid gap-2 ${showPhoto ? 'pl-12' : ''} ${
+                      { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-2 sm:grid-cols-3' }[
+                        [showPrice, showBarberPrice, showStock].filter(Boolean).length
+                      ] || 'grid-cols-1'
+                    }`}>
+                      {showPrice && (
+                        <div>
+                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1">Precio</span>
+                          <input
+                            type="number" min="0"
+                            className="input-dark w-full py-1.5 text-sm"
+                            value={editPrice}
+                            onChange={e => setEditPrice(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                          />
+                        </div>
+                      )}
+                      {showBarberPrice && (
+                        <div>
+                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1">Precio barbero</span>
+                          <input
+                            type="number" min="0"
+                            className="input-dark w-full py-1.5 text-sm"
+                            placeholder={item.price != null ? String(Number(item.price)) : ''}
+                            value={editBarberPrice}
+                            onChange={e => setEditBarberPrice(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                          />
+                        </div>
+                      )}
+                      {showStock && (
+                        <div>
+                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1">Stock mínimo</span>
+                          <input
+                            type="number" min="0"
+                            className="input-dark w-full py-1.5 text-sm"
+                            placeholder="0"
+                            value={editMinStock}
+                            onChange={e => setEditMinStock(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                          />
+                        </div>
+                      )}
+                    </div>
                   )}
-                  {showBarberPrice && (
-                    <input
-                      type="number"
-                      className="input-dark w-28 py-1 text-sm"
-                      placeholder="Precio barbero"
-                      value={editBarberPrice}
-                      onChange={e => setEditBarberPrice(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
-                    />
-                  )}
-                  {showStock && (
-                    <input
-                      type="number"
-                      min="0"
-                      className="input-dark w-28 py-1 text-sm"
-                      placeholder="Stock mínimo"
-                      value={editMinStock}
-                      onChange={e => setEditMinStock(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
-                    />
-                  )}
-                  <button onClick={() => saveEdit(item)} className="text-emerald-400 hover:text-emerald-300 p-1">
-                    <Check size={16} />
-                  </button>
-                  <button onClick={() => setEditId(null)} className="text-cream/30 hover:text-cream/60 p-1">
-                    <X size={16} />
-                  </button>
-                </>
+                </div>
               ) : (
-                <>
-                  <span className="flex-1 text-cream/80 text-sm min-w-[8rem]">{item.name}</span>
+                <div className="flex items-center gap-3">
+                  {showPhoto && <ItemPhoto item={item} tableName={tableName} tenantId={tenantId} onChange={load} />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-cream/85 text-sm font-medium truncate">{item.name}</p>
+                    {showBarberPrice && (
+                      <p className="text-violet-300/70 text-xs mt-0.5 truncate">
+                        Precio barbero: ${Number(item.barber_price ?? item.price).toLocaleString('es-AR')}
+                      </p>
+                    )}
+                  </div>
                   {showPrice && (
-                    <span className="text-gold text-sm font-medium shrink-0">
+                    <span className="text-gold text-sm font-semibold shrink-0">
                       ${Number(item.price).toLocaleString('es-AR')}
-                    </span>
-                  )}
-                  {showBarberPrice && (
-                    <span className="text-violet-300/70 text-xs shrink-0">
-                      barbero: ${Number(item.barber_price ?? item.price).toLocaleString('es-AR')}
                     </span>
                   )}
                   <div className="flex gap-0.5 shrink-0">
@@ -335,8 +364,12 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                       <Trash2 size={14} />
                     </button>
                   </div>
-                  {showStock && <StockControl item={item} tableName={tableName} onChange={load} />}
-                </>
+                </div>
+              )}
+              {editId !== item.id && showStock && (
+                <div className={showPhoto ? 'pl-12 mt-1' : 'mt-1'}>
+                  <StockControl item={item} tableName={tableName} onChange={load} />
+                </div>
               )}
             </div>
           ))}
