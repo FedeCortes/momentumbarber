@@ -43,3 +43,18 @@ export async function uploadAvatar(supabase, { tenantId, barberId, file }) {
   const { data } = supabase.storage.from('avatars').getPublicUrl(path)
   return `${data.publicUrl}?v=${Date.now()}`
 }
+
+// Foto de un ítem del catálogo (producto, bebida...): mismo esquema que el
+// avatar pero en el bucket "catalog-photos", separado por tabla y tenant.
+export async function uploadCatalogPhoto(supabase, { tenantId, tableName, itemId, file }) {
+  if (!file) throw new Error('Elegí una imagen')
+  if (!/^image\//.test(file.type)) throw new Error('El archivo tiene que ser una imagen')
+  const blob = await resizeImage(file, 480)
+  const path = `${tenantId}/${tableName}/${itemId}.jpg`
+  const { error } = await supabase.storage
+    .from('catalog-photos')
+    .upload(path, blob, { upsert: true, contentType: 'image/jpeg', cacheControl: '86400' })
+  if (error) throw error
+  const { data } = supabase.storage.from('catalog-photos').getPublicUrl(path)
+  return `${data.publicUrl}?v=${Date.now()}`
+}

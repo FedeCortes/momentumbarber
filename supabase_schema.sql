@@ -383,6 +383,17 @@ create policy "config_tenant"   on public.tenant_config for all using (tenant_id
 -- ============================================================
 
 -- ============================================================
+-- FOTOS DE PRODUCTOS + COMISIÓN POR BARBERO EN PRODUCTOS
+-- El DDL completo vive en supabase_migration_products.sql.
+-- Resumen:
+--   · products        + image_url
+--   · barber_products (barber_id, product_id, commission_pct; sin fila = 0%,
+--                      es decir 100% local — mismo espíritu que barber_services
+--                      pero con el default invertido); RLS root + tenant
+--   · storage bucket 'catalog-photos' + policies (fotos de productos)
+-- ============================================================
+
+-- ============================================================
 -- DATOS SEMILLA — servicios y métodos de pago por defecto
 -- (se insertan al crear un tenant desde el código de la app)
 -- ============================================================

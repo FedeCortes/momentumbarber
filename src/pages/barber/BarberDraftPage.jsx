@@ -6,7 +6,10 @@ import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import CommissionBadge from '../../components/ui/CommissionBadge'
-import { splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesMap } from '../../lib/earnings'
+import {
+  splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesMap,
+  splitProducts, buildProductItems, productPct, productOverridesMap,
+} from '../../lib/earnings'
 import { qAll } from '../../lib/query'
 import CustomerPicker from '../../components/booking/CustomerPicker'
 import toast from 'react-hot-toast'
@@ -140,6 +143,7 @@ export default function BarberDraftPage() {
   const [drinks, setDrinks]             = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
   const [overrides, setOverrides]       = useState({})
+  const [productOverrides, setProductOverrides] = useState({})
   const [catalogReady, setCatalogReady] = useState(false)
 
   const [selServices, setSelServices]   = useState({})
@@ -170,11 +174,23 @@ export default function BarberDraftPage() {
           x => x.from('drinks').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
           x => x.from('payment_methods').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('sort_order'),
         ]
-        if (barber?.id) builds.push(x => x.from('barber_services').select('*').eq('barber_id', barber.id))
-        const [s, p, d, pm, bs = []] = await qAll(builds)
+        if (barber?.id) {
+          builds.push(x => x.from('barber_services').select('*').eq('barber_id', barber.id))
+          builds.push(x => x.from('barber_products').select('*').eq('barber_id', barber.id))
+        }
+        let results
+        try {
+          results = await qAll(builds)
+        } catch (e) {
+          // barber_products puede no existir todavía (falta correr la migración)
+          if (!/barber_products/.test(e?.message || '')) throw e
+          results = await qAll(builds.slice(0, 5))
+        }
+        const [s, p, d, pm, bs = [], bp = []] = results
         if (!alive) return
         const ov = overridesMap(bs || [])
         setOverrides(ov)
+        setProductOverrides(productOverridesMap(bp || []))
         setServices(enabledServices(s || [], ov))
         setProducts(p || [])
         setDrinks(d || [])
@@ -248,7 +264,8 @@ export default function BarberDraftPage() {
   const totalDrinks   = calcTotal(selDrinks, drinks)
   const tipAmt        = Number(tip) || 0
   const mySplit       = splitServices(selServices, services, barber, overrides)
-  const myEarnings    = mySplit.barberAmt + tipAmt
+  const myProductSplit = splitProducts(selProducts, products, barber, productOverrides)
+  const myEarnings    = mySplit.barberAmt + myProductSplit.barberAmt + tipAmt
   const baseTotal     = totalServices + totalProducts + totalDrinks
   const selectedPm    = paymentMethods.find(p => p.id === paymentMethod)
   const surchargePct  = Number(selectedPm?.surcharge_pct) || 0
@@ -261,12 +278,9 @@ export default function BarberDraftPage() {
 
   function buildItems() {
     return [
-      // Guarda el % que le corresponde al barbero por cada servicio
+      // Guarda el % que le corresponde al barbero por cada servicio (y producto, si tiene)
       ...buildServiceItems(selServices, services, barber, overrides),
-      ...Object.entries(selProducts).map(([id, qty]) => {
-        const item = products.find(p => p.id === id)
-        return { item_type: 'product', item_id: id, name: item.name, price: item.price, quantity: qty }
-      }),
+      ...buildProductItems(selProducts, products, barber, productOverrides),
       ...Object.entries(selDrinks).map(([id, qty]) => {
         const item = drinks.find(d => d.id === id)
         return { item_type: 'drink', item_id: id, name: item.name, price: item.price, quantity: qty }
@@ -434,9 +448,11 @@ export default function BarberDraftPage() {
           <button className="flex items-center justify-between w-full" onClick={() => setShowVitrina(v => !v)}>
             <div className="flex items-center gap-2">
               <label className="label mb-0 pointer-events-none">Vitrina</label>
-              <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
-                <Store size={10} /> 100% local
-              </span>
+              {!Object.values(productOverrides).some(o => Number(o.commission_pct) > 0) && (
+                <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
+                  <Store size={10} /> 100% local
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {totalProducts > 0 && <span className="text-gold text-sm font-bold">${totalProducts.toLocaleString('es-AR')}</span>}
@@ -445,7 +461,12 @@ export default function BarberDraftPage() {
           </button>
           {showVitrina && (
             <div className="mt-2">
-              <ItemPicker items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} stockOf={stockFn} />
+              <ItemPicker
+                items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} stockOf={stockFn}
+                commissionOf={p => productPct(p, barber, productOverrides) > 0
+                  ? { pct: productPct(p, barber, productOverrides), isDefault: false }
+                  : null}
+              />
             </div>
           )}
         </div>
