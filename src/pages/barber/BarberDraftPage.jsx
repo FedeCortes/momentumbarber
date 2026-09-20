@@ -11,9 +11,11 @@ import {
   splitProducts, buildProductItems, productPct, productOverridesMap,
 } from '../../lib/earnings'
 import { qAll } from '../../lib/query'
+import PhotoLightbox from '../../components/ui/PhotoLightbox'
 import toast from 'react-hot-toast'
 
 function ItemPicker({ items, selected, onToggle, commissionOf, stockOf, showPhoto }) {
+  const [zoom, setZoom] = useState(null)
   if (items.length === 0) return (
     <p className="text-cream/30 text-xs text-center py-3">Sin ítems disponibles</p>
   )
@@ -33,11 +35,15 @@ function ItemPicker({ items, selected, onToggle, commissionOf, stockOf, showPhot
             }`}
           >
             {showPhoto && (
-              <div className="w-11 h-11 rounded-lg bg-dark-400/30 border border-dark-400/60 overflow-hidden shrink-0 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => item.image_url && setZoom(item.image_url)}
+                className="w-11 h-11 rounded-lg bg-dark-400/30 border border-dark-400/60 overflow-hidden shrink-0 flex items-center justify-center"
+              >
                 {item.image_url
                   ? <img src={item.image_url} alt="" className="w-full h-full object-cover" />
                   : <ImageOff size={15} className="text-cream/20" />}
-              </div>
+              </button>
             )}
             <button
               onClick={() => onToggle(item, -1)}
@@ -80,6 +86,7 @@ function ItemPicker({ items, selected, onToggle, commissionOf, stockOf, showPhot
           </div>
         )
       })}
+      <PhotoLightbox src={zoom} onClose={() => setZoom(null)} />
     </div>
   )
 }

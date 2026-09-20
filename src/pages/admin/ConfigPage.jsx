@@ -5,13 +5,15 @@ import { useAuth } from '../../context/AuthContext'
 import { stockLevel } from '../../lib/stock'
 import { uploadCatalogPhoto, removeCatalogPhoto } from '../../lib/photo'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
 
-// Miniatura de foto de un ítem del catálogo (producto). Tocarla sube/cambia
-// la foto; la cruz roja la quita. w-14/h-14 = 56px, bien visible en la lista.
+// Miniatura de foto de un ítem del catálogo (producto), 56px. Tocarla abre
+// un modal con la foto grande y ahí se cambia o se quita.
 function ItemPhoto({ item, tableName, tenantId, onChange }) {
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
+  const [open, setOpen] = useState(false)
 
   async function pick(e) {
     const file = e.target.files?.[0]
@@ -30,8 +32,7 @@ function ItemPhoto({ item, tableName, tenantId, onChange }) {
     }
   }
 
-  async function remove(e) {
-    e.stopPropagation()
+  async function remove() {
     if (uploading) return
     setUploading(true)
     try {
@@ -40,6 +41,7 @@ function ItemPhoto({ item, tableName, tenantId, onChange }) {
       if (error) throw error
       toast.success('Foto eliminada')
       onChange?.()
+      setOpen(false)
     } catch (err) {
       toast.error(err.message || 'No se pudo eliminar la foto')
     } finally {
@@ -48,13 +50,12 @@ function ItemPhoto({ item, tableName, tenantId, onChange }) {
   }
 
   return (
-    <div className="relative shrink-0">
+    <>
       <button
         type="button"
-        onClick={() => fileRef.current?.click()}
-        disabled={uploading}
-        title={item.image_url ? 'Cambiar foto' : 'Agregar foto'}
-        className="relative w-14 h-14 rounded-xl bg-dark-300 border border-dark-400 overflow-hidden flex items-center justify-center group"
+        onClick={() => setOpen(true)}
+        title={item.image_url ? 'Ver foto' : 'Agregar foto'}
+        className="relative w-14 h-14 rounded-xl bg-dark-300 border border-dark-400 overflow-hidden shrink-0 flex items-center justify-center group"
       >
         {item.image_url
           ? <img src={item.image_url} alt="" className="w-full h-full object-cover" />
@@ -62,24 +63,45 @@ function ItemPhoto({ item, tableName, tenantId, onChange }) {
         <span className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-colors">
           <Camera size={15} className="text-white opacity-0 group-hover:opacity-100" />
         </span>
-        {uploading && (
-          <span className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <span className="w-4 h-4 border-2 border-cream/70 border-t-transparent rounded-full animate-spin" />
-          </span>
-        )}
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={pick} />
       </button>
-      {item.image_url && !uploading && (
-        <button
-          type="button"
-          onClick={remove}
-          title="Quitar foto"
-          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white flex items-center justify-center shadow"
-        >
-          <X size={11} strokeWidth={3} />
-        </button>
-      )}
-    </div>
+
+      <Modal open={open} onClose={() => setOpen(false)} title={item.name} size="sm">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-full aspect-square rounded-2xl bg-dark-300 border border-dark-400 overflow-hidden flex items-center justify-center">
+            {item.image_url
+              ? <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+              : <ImageOff size={40} className="text-cream/20" />}
+            {uploading && (
+              <span className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                <span className="w-6 h-6 border-2 border-cream/70 border-t-transparent rounded-full animate-spin" />
+              </span>
+            )}
+          </div>
+          <div className="flex gap-3 w-full">
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="btn-outline-gold flex-1 flex items-center justify-center gap-2"
+            >
+              <Camera size={15} /> {uploading ? 'Subiendo...' : item.image_url ? 'Cambiar foto' : 'Subir foto'}
+            </button>
+            {item.image_url && (
+              <button
+                type="button"
+                onClick={remove}
+                disabled={uploading}
+                title="Quitar foto"
+                className="btn-ghost text-red-400/80 hover:text-red-400 px-4"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
+          </div>
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={pick} />
+        </div>
+      </Modal>
+    </>
   )
 }
 
