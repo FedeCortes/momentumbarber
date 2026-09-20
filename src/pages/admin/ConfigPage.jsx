@@ -1,10 +1,57 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, ChevronUp, Lock, Boxes, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, ChevronUp, Lock, Boxes, ToggleLeft, ToggleRight, Camera, ImageOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { stockLevel } from '../../lib/stock'
+import { uploadCatalogPhoto } from '../../lib/photo'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import toast from 'react-hot-toast'
+
+// Miniatura de foto de un ítem del catálogo (producto). Tocarla sube/cambia la foto.
+function ItemPhoto({ item, tableName, tenantId, onChange }) {
+  const fileRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
+
+  async function pick(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setUploading(true)
+    try {
+      const url = await uploadCatalogPhoto(supabase, { tenantId, tableName, itemId: item.id, file })
+      const { error } = await supabase.from(tableName).update({ image_url: url }).eq('id', item.id)
+      if (error) throw error
+      onChange?.()
+    } catch (err) {
+      toast.error(err.message || 'No se pudo subir la foto')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => fileRef.current?.click()}
+      disabled={uploading}
+      title={item.image_url ? 'Cambiar foto' : 'Agregar foto'}
+      className="relative w-9 h-9 rounded-lg bg-dark-300 border border-dark-400 overflow-hidden shrink-0 flex items-center justify-center group"
+    >
+      {item.image_url
+        ? <img src={item.image_url} alt="" className="w-full h-full object-cover" />
+        : <ImageOff size={14} className="text-cream/25" />}
+      <span className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-colors">
+        <Camera size={12} className="text-white opacity-0 group-hover:opacity-100" />
+      </span>
+      {uploading && (
+        <span className="absolute inset-0 bg-black/50 flex items-center justify-center">
+          <span className="w-3.5 h-3.5 border-2 border-cream/70 border-t-transparent rounded-full animate-spin" />
+        </span>
+      )}
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={pick} />
+    </button>
+  )
+}
 
 // Colores por estado de stock frente al punto de reposición
 const STOCK_UI = {
@@ -66,7 +113,7 @@ function StockControl({ item, tableName, onChange }) {
   )
 }
 
-function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false }) {
+function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false, showPhoto = false }) {
   const [items, setItems] = useState([])
   const [quickName, setQuickName] = useState('')
   const [quickPrice, setQuickPrice] = useState('')
@@ -207,6 +254,12 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
         </p>
       )}
 
+      {showPhoto && (
+        <p className="text-cream/30 text-xs -mt-3 mb-4">
+          Tocá la miniatura de un ítem ya creado para ponerle o cambiarle la foto.
+        </p>
+      )}
+
       {/* Lista */}
       {items.length === 0 ? (
         <p className="text-cream/25 text-sm text-center py-2">Sin ítems todavía</p>
@@ -214,6 +267,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
         <div className="flex flex-col divide-y divide-dark-300">
           {items.map(item => (
             <div key={item.id} className="flex items-center gap-3 py-2.5 flex-wrap">
+              {showPhoto && <ItemPhoto item={item} tableName={tableName} tenantId={tenantId} onChange={load} />}
               {editId === item.id ? (
                 <>
                   <input
@@ -508,7 +562,7 @@ export default function ConfigPage() {
       </div>
 
       <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
-      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} />
+      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} showPhoto />
       <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} />
       <CatalogSection title="Pagadores" tableName="expense_payers" tenantId={tenant.id} showPrice={false} />
       <PaymentMethodSection tenantId={tenant.id} />

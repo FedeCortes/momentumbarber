@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import EmptyState from '../../components/ui/EmptyState'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
 import CommissionBadge from '../../components/ui/CommissionBadge'
-import { groupByPct } from '../../lib/earnings'
+import { groupByPct, groupProductsByPct } from '../../lib/earnings'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
@@ -14,14 +14,14 @@ import toast from 'react-hot-toast'
 // Línea de ítem — muestra con qué % se paga cada servicio
 function ItemLine({ it, barberPct }) {
   const pct  = it.commission_pct != null ? Number(it.commission_pct) : null
-  const show = it.item_type === 'service' && pct != null
+  const show = (it.item_type === 'service' && pct != null) || (it.item_type === 'product' && pct > 0)
   return (
     <div className="flex justify-between items-center gap-2">
       <span className="text-cream/60 text-sm min-w-0">
         {it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
         {show && (
           <span className="ml-1.5 align-middle inline-block">
-            <CommissionBadge pct={pct} variant="barber" size="xs" isDefault={pct === Number(barberPct)} />
+            <CommissionBadge pct={pct} variant="barber" size="xs" isDefault={it.item_type === 'service' && pct === Number(barberPct)} />
           </span>
         )}
       </span>
@@ -182,10 +182,11 @@ export default function BarberHistoryPage() {
     setLoading(false)
   }
 
-  // Lo que le corresponde según lo que él mismo cargó: comisión de sus servicios + propinas
+  // Lo que le corresponde según lo que él mismo cargó: comisión de servicios + vitrina + propinas
   function earningsOf(draft) {
-    const commission = groupByPct(draft.draft_items || [], barber)
-      .reduce((sum, g) => sum + g.barberAmt, 0)
+    const items = draft.draft_items || []
+    const commission = groupByPct(items, barber).reduce((sum, g) => sum + g.barberAmt, 0)
+      + groupProductsByPct(items).reduce((sum, g) => sum + g.barberAmt, 0)
     return commission + Number(draft.tip || 0)
   }
 

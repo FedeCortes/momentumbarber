@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import Modal from '../../components/ui/Modal'
 import EmptyState from '../../components/ui/EmptyState'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
+import { productOverridesMap } from '../../lib/earnings'
 import toast from 'react-hot-toast'
 
 function BarberForm({ barber, onSave, onClose }) {
@@ -22,6 +23,10 @@ function BarberForm({ barber, onSave, onClose }) {
   const [svcCfg, setSvcCfg]     = useState({})
   const [loadingSvcs, setLoadingSvcs] = useState(true)
 
+  // Config de productos: { [product_id]: { pct } } — pct '' = 100% local (sin fila)
+  const [products, setProducts] = useState([])
+  const [prdCfg, setPrdCfg]     = useState({})
+
   useEffect(() => {
     if (!tenant?.id) return
     Promise.all([
@@ -29,7 +34,11 @@ function BarberForm({ barber, onSave, onClose }) {
       barber
         ? supabase.from('barber_services').select('*').eq('barber_id', barber.id)
         : Promise.resolve({ data: [] }),
-    ]).then(([svcs, cfg]) => {
+      supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
+      barber
+        ? supabase.from('barber_products').select('*').eq('barber_id', barber.id)
+        : Promise.resolve({ data: [] }),
+    ]).then(([svcs, cfg, prds, prdCfgRes]) => {
       const list = svcs.data || []
       const byService = Object.fromEntries((cfg.data || []).map(r => [r.service_id, r]))
       // Por defecto todos los servicios vienen seleccionados y sin % propio
@@ -42,6 +51,13 @@ function BarberForm({ barber, onSave, onClose }) {
       })))
       setServices(list)
       setLoadingSvcs(false)
+
+      const prdList = prds.data || []
+      const byProduct = productOverridesMap(prdCfgRes.data || [])
+      setPrdCfg(Object.fromEntries(prdList.map(p => [p.id, {
+        pct: byProduct[p.id]?.commission_pct != null ? String(Number(byProduct[p.id].commission_pct)) : '',
+      }])))
+      setProducts(prdList)
     })
   }, [tenant?.id, barber?.id])
 
@@ -53,14 +69,21 @@ function BarberForm({ barber, onSave, onClose }) {
     setSvcCfg(prev => Object.fromEntries(Object.entries(prev).map(([id, c]) => [id, { ...c, enabled }])))
   }
 
+  function setPrd(id, patch) {
+    setPrdCfg(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }))
+  }
+
   const enabledCount = Object.values(svcCfg).filter(c => c.enabled).length
   const customCount  = Object.values(svcCfg).filter(c => c.enabled && c.pct !== '').length
+  const customPrdCount = Object.values(prdCfg).filter(c => c.pct !== '' && Number(c.pct) > 0).length
 
   async function handleSave() {
     if (!form.name) return toast.error('El nombre es obligatorio')
     if (form.commission_pct < 0 || form.commission_pct > 100) return toast.error('El porcentaje debe estar entre 0 y 100')
     const invalid = Object.values(svcCfg).some(c => c.pct !== '' && (Number.isNaN(Number(c.pct)) || Number(c.pct) < 0 || Number(c.pct) > 100))
     if (invalid) return toast.error('Los porcentajes por servicio deben estar entre 0 y 100')
+    const invalidPrd = Object.values(prdCfg).some(c => c.pct !== '' && (Number.isNaN(Number(c.pct)) || Number(c.pct) < 0 || Number(c.pct) > 100))
+    if (invalidPrd) return toast.error('Los porcentajes por producto deben estar entre 0 y 100')
     setLoading(true)
     try {
       const payload = {
@@ -96,6 +119,21 @@ function BarberForm({ barber, onSave, onClose }) {
       if (rows.length) {
         const { error } = await supabase.from('barber_services').insert(rows)
         if (error) throw error
+      }
+
+      // Productos: solo se guarda fila cuando tiene % propio (> 0). Sin fila = 100% local.
+      const prdRows = Object.entries(prdCfg)
+        .filter(([, c]) => c.pct !== '' && Number(c.pct) > 0)
+        .map(([product_id, c]) => ({
+          tenant_id: tenant.id,
+          barber_id: barberId,
+          product_id,
+          commission_pct: Number(c.pct),
+        }))
+
+      const { error: delPrdErr } = await supabase.from('barber_products').delete().eq('barber_id', barberId)
+      if (!delPrdErr && prdRows.length) {
+        await supabase.from('barber_products').insert(prdRows)
       }
 
       toast.success(barber ? 'Barbero actualizado' : 'Barbero creado')
@@ -202,6 +240,51 @@ function BarberForm({ barber, onSave, onClose }) {
           </div>
         )}
       </div>
+
+      {/* ── Productos: % puntual que se lleva de la vitrina (por defecto, 100% local) ── */}
+      {products.length > 0 && (
+        <div>
+          <label className="label mb-1">Productos de vitrina</label>
+          <p className="text-cream/30 text-xs mb-2">
+            Por defecto la vitrina es 100% para el local. Si a este barbero le das % en algún producto, dejalo acá — vacío = sigue siendo 100% local.
+          </p>
+          <div className="border border-dark-400/60 rounded-xl overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2 bg-dark-300/50 border-b border-dark-400/50">
+              <span className="flex-1 text-cream/40 text-[10px] font-bold uppercase tracking-wide">Producto</span>
+              <span className="w-24 text-right text-cream/40 text-[10px] font-bold uppercase tracking-wide">% que cobra</span>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {products.map(p => {
+                const cfg = prdCfg[p.id] || { pct: '' }
+                return (
+                  <div key={p.id} className="flex items-center gap-2 px-3 py-2 border-b border-dark-400/25 last:border-0">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-cream/80 text-sm">{p.name}</span>
+                      <span className="text-cream/25 text-xs ml-2">${Number(p.price).toLocaleString('es-AR')}</span>
+                    </div>
+                    <div className="relative w-24 shrink-0">
+                      <input
+                        type="number" min="0" max="100" step="0.5"
+                        className="input-dark w-full py-1 text-sm pr-6 text-right"
+                        placeholder="0"
+                        value={cfg.pct}
+                        onChange={e => setPrd(p.id, { pct: e.target.value })}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-cream/35 text-xs pointer-events-none">%</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {customPrdCount > 0 && (
+              <div className="px-3 py-2 bg-dark-300/30 border-t border-dark-400/40 text-cream/35 text-[11px]">
+                {customPrdCount} producto{customPrdCount === 1 ? '' : 's'} con % propio
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div>
         <label className="label">Contraseña (opcional)</label>
         <input

@@ -6,7 +6,7 @@ import { es } from 'date-fns/locale'
 import EmptyState from '../../components/ui/EmptyState'
 import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePicker'
 import Modal from '../../components/ui/Modal'
-import { groupByPct } from '../../lib/earnings'
+import { groupByPct, groupProductsByPct } from '../../lib/earnings'
 import { qAll } from '../../lib/query'
 import toast from 'react-hot-toast'
 
@@ -195,8 +195,11 @@ export default function DayClosingPage() {
   const totalServicesAll = sales.reduce((sum, s) => sum + Number(s.total_services || 0), 0)
   // Propinas de ventas sin barbero: quedan para el local
   const shopTips = sales.filter(s => !s.barber_id).reduce((sum, s) => sum + Number(s.tip || 0), 0)
+  // Comisión pagada a barberos por productos de vitrina con % propio (por defecto, vitrina es 100% local)
+  const productBarberCut = groupProductsByPct(sales.flatMap(s => s.sale_items || [])).reduce((sum, g) => sum + g.barberAmt, 0)
+  const shopFromProducts = totalProducts - productBarberCut
   // Lo que retiene el local de los servicios: su % de comisión + servicios de ventas sin barbero (100% local)
-  const shopFromServices = totalShop - totalProducts - totalDrinks - totalSurcharge - shopTips - totalConsumption
+  const shopFromServices = totalShop - shopFromProducts - totalDrinks - totalSurcharge - shopTips - totalConsumption
   // Lo que efectivamente se les pagó a los barberos por comisión de servicios (sin contar propinas)
   const totalBarberServiceCommission = totalServicesAll - shopFromServices
 
@@ -222,11 +225,14 @@ export default function DayClosingPage() {
     const earnings  = bSales.reduce((sum, s) => sum + Number(s.barber_earnings || 0), 0)
     const surcharge = bSales.reduce((sum, s) => sum + Number(s.surcharge_amt || 0), 0)
     // Desglose por % aplicado; la comisión sale de lo guardado, no se recalcula
-    const rates      = groupByPct(bSales.flatMap(s => s.sale_items || []), b)
-    const commission = earnings - tips
+    const bItems = bSales.flatMap(s => s.sale_items || [])
+    const rates      = groupByPct(bItems, b)
+    // Comisión de vitrina (si tiene % propio en algún producto) — aparte de la de servicios
+    const productCommission = groupProductsByPct(bItems).reduce((sum, g) => sum + g.barberAmt, 0)
+    const commission = earnings - tips - productCommission
     // Lo que efectivamente se le paga: comisión + propinas, menos lo que consumió a precio de barbero
     const netEarnings = earnings - consumption
-    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, rates, commission, consumption, netEarnings, sales: bSales }
+    return { barber: b, count: bSales.length, svcs, products, drinks, tips, earnings, surcharge, rates, commission, productCommission, consumption, netEarnings, sales: bSales }
   }).filter(Boolean)
 
   // ── Ventas sin barbero ──
@@ -255,7 +261,7 @@ export default function DayClosingPage() {
 
     if (byBarber.length) {
       lines.push(``, `👤 A PAGAR:`)
-      byBarber.forEach(({ barber, count, svcs, tips, earnings, rates, commission, consumption, netEarnings }) => {
+      byBarber.forEach(({ barber, count, svcs, tips, earnings, rates, commission, productCommission, consumption, netEarnings }) => {
         const rateLabel = rates.length > 1
           ? `comisión mixta: ${rates.map(r => `${r.pct}%`).join(' / ')}`
           : `${rates[0]?.pct ?? barber.commission_pct}% comisión`
@@ -263,6 +269,7 @@ export default function DayClosingPage() {
         lines.push(`   Servicios (${count}): $${fmt(svcs)}`)
         if (rates.length > 1) rates.forEach(r => lines.push(`      ${r.pct}% sobre $${fmt(r.amount)} → $${fmt(r.barberAmt)}`))
         lines.push(`   Comisión:         $${fmt(commission)}`)
+        if (productCommission > 0) lines.push(`   Comisión vitrina: $${fmt(productCommission)}`)
         if (tips > 0) lines.push(`   Propinas:         $${fmt(tips)}`)
         if (consumption > 0) lines.push(`   Consumo propio:   -$${fmt(consumption)}`)
         lines.push(`   → COBRAR:          $${fmt(netEarnings)}`)
@@ -273,7 +280,7 @@ export default function DayClosingPage() {
       ``, `🏪 LOCAL: $${fmt(totalShop)}`,
       shopFromServices > 0 ? `   Servicios (comisión${noBarberSales.length ? ' + sin barbero' : ''}): $${fmt(shopFromServices)}` : null,
       shopTips > 0 ? `   Propinas sin barbero: $${fmt(shopTips)}` : null,
-      totalProducts > 0 ? `   Vitrina:            $${fmt(totalProducts)}` : null,
+      totalProducts > 0 ? `   Vitrina:            $${fmt(shopFromProducts)}${productBarberCut > 0 ? ` (+ $${fmt(productBarberCut)} a barberos)` : ''}` : null,
       totalDrinks   > 0 ? `   Bebidas:            $${fmt(totalDrinks)}` : null,
       totalConsumption > 0 ? `   Consumo de barberos: $${fmt(totalConsumption)}` : null,
       totalSurcharge > 0 ? `   Recargo pagos:      $${fmt(totalSurcharge)}` : null,
@@ -382,7 +389,7 @@ export default function DayClosingPage() {
             <div>
               <SectionLabel>A pagarle a cada barbero</SectionLabel>
               <div className="flex flex-col gap-3">
-                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, rates, commission, consumption, netEarnings, sales: bSales }) => (
+                {byBarber.map(({ barber, count, svcs, products, drinks, tips, earnings, surcharge, rates, commission, productCommission, consumption, netEarnings, sales: bSales }) => (
                   <div key={barber.id} className="card">
                     {/* Encabezado */}
                     <div className="flex items-center gap-3 mb-4">
@@ -418,7 +425,21 @@ export default function DayClosingPage() {
                             </div>
                             <span className="text-cream/40 text-sm shrink-0">${fmt(svcs + products + drinks + surcharge)}</span>
                           </div>
-                          {products > 0 && <ExcludedRow icon={ShoppingBag} label="Vitrina vendida" amount={products} />}
+                          {products - productCommission > 0 && (
+                            <ExcludedRow icon={ShoppingBag} label="Vitrina vendida" amount={products - productCommission} />
+                          )}
+                          {productCommission > 0 && (
+                            <div className="flex items-center justify-between px-4 py-2 border-b border-dark-400/15">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <Percent size={11} className="text-violet-300/70 shrink-0" />
+                                <div className="min-w-0">
+                                  <p className="text-cream/60 text-xs">Comisión de vitrina</p>
+                                  <p className="text-cream/25 text-[11px]">% propio en algún producto</p>
+                                </div>
+                              </div>
+                              <span className="text-cream/70 text-sm shrink-0">${fmt(productCommission)}</span>
+                            </div>
+                          )}
                           {drinks   > 0 && <ExcludedRow icon={Droplets} label="Bebidas vendidas" amount={drinks} />}
                           {surcharge > 0 && <ExcludedRow icon={ArrowRightLeft} label="Recargo método de pago" amount={surcharge} />}
                         </>
@@ -511,7 +532,12 @@ export default function DayClosingPage() {
                   <MoneyRow icon={Coins} label="Propinas sin barbero" sub="Quedan para el local" amount={shopTips} />
                 )}
                 {totalProducts > 0 && (
-                  <MoneyRow icon={ShoppingBag} label="Vitrina" sub="100% local" amount={totalProducts} />
+                  <MoneyRow
+                    icon={ShoppingBag}
+                    label="Vitrina"
+                    sub={productBarberCut > 0 ? `$${fmt(productBarberCut)} pagado a barberos por % propio` : '100% local'}
+                    amount={shopFromProducts}
+                  />
                 )}
                 {totalDrinks > 0 && (
                   <MoneyRow icon={Droplets} label="Bebidas" sub="100% local" amount={totalDrinks} />
