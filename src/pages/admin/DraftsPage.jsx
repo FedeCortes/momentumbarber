@@ -653,7 +653,9 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, barber
             <div className={`flex mt-0.5 flex-wrap ${compact ? 'gap-x-2 gap-y-0.5' : 'gap-3'}`}>
               {showDate && <span className={`text-gold/50 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(sale.sale_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
               <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>{pm?.name || '—'}</span>
-              <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(sale.created_at), 'HH:mm')}</span>
+              {format(new Date(sale.created_at), 'yyyy-MM-dd') === sale.sale_date
+                ? <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(sale.created_at), 'HH:mm')}</span>
+                : <span className={`text-amber-400/70 ${compact ? 'text-[10px]' : 'text-xs'}`}>cargada el {format(new Date(sale.created_at), 'd MMM HH:mm', { locale: es })}</span>}
               {Number(sale.tip) > 0 && <span className={`text-cream/30 ${compact ? 'text-[10px]' : 'text-xs'}`}>Propina ${Number(sale.tip).toLocaleString('es-AR')}</span>}
             </div>
           </button>

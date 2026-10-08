@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { format } from 'date-fns'
-import { Check, Plus, Minus, Store, ChevronDown, ChevronUp, AlertTriangle, ImageOff } from 'lucide-react'
+import { es } from 'date-fns/locale'
+import { Check, Plus, Minus, Store, ChevronDown, ChevronUp, AlertTriangle, ImageOff, CalendarDays } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import CommissionBadge from '../../components/ui/CommissionBadge'
@@ -13,6 +14,51 @@ import { applyStockDelta, checkStock } from '../../lib/stock'
 import { qAll } from '../../lib/query'
 import PhotoLightbox from '../../components/ui/PhotoLightbox'
 import toast from 'react-hot-toast'
+
+const todayStr = () => format(new Date(), 'yyyy-MM-dd')
+const dayLabel = (d) => format(new Date(d + 'T12:00:00'), "EEEE d 'de' MMMM", { locale: es })
+
+// Fecha a la que se imputa el registro. '' = hoy (se resuelve al guardar, por si la app queda abierta pasada la medianoche)
+function DatePickerCard({ value, onChange, accent = 'gold' }) {
+  const today = todayStr()
+  const isPast = !!value && value < today
+  return (
+    <div className={`card mb-3 ${isPast ? 'border-amber-400/50' : ''}`}>
+      <div className="flex items-center justify-between gap-3">
+        <label className="label mb-0 flex items-center gap-1.5">
+          <CalendarDays size={13} className={isPast ? 'text-amber-400' : accent === 'violet' ? 'text-violet-300' : 'text-gold'} />
+          Fecha
+        </label>
+        <div className="flex items-center gap-2">
+          {isPast && (
+            <button onClick={() => onChange('')} className="text-xs text-cream/50 underline decoration-dotted underline-offset-2 hover:text-cream">
+              Volver a hoy
+            </button>
+          )}
+          <input
+            type="date"
+            className="input-dark w-auto py-1.5 text-sm"
+            value={value || today}
+            max={today}
+            onChange={e => {
+              const v = e.target.value
+              // Vacío, hoy o futuro => hoy
+              onChange(!v || v >= today ? '' : v)
+            }}
+          />
+        </div>
+      </div>
+      {isPast ? (
+        <p className="text-amber-400 text-xs mt-2 flex items-start gap-1.5">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+          <span>Fecha pasada: se suma al cierre del {dayLabel(value)}, no al de hoy.</span>
+        </p>
+      ) : (
+        <p className="text-cream/35 text-xs mt-2">Hoy. Si es de otro día, cambiá la fecha y se suma al cierre de ese día.</p>
+      )}
+    </div>
+  )
+}
 
 function ItemPicker({ items, selected, onToggle, commissionOf, stockOf, showPhoto }) {
   const [zoom, setZoom] = useState(null)
@@ -121,6 +167,8 @@ export default function SalesPage() {
   const [saved, setSaved] = useState(false)
   const [showVitrina, setShowVitrina] = useState(false)
   const [showBebidas, setShowBebidas] = useState(false)
+  const [saleDate, setSaleDate] = useState('') // '' = hoy
+  const [savedDate, setSavedDate] = useState('')
 
   // ── Consumo de barbero (compra personal, a precio especial) ──
   const [consBarber, setConsBarber] = useState('')
@@ -128,6 +176,7 @@ export default function SalesPage() {
   const [consDrinks, setConsDrinks] = useState({})
   const [consLoading, setConsLoading] = useState(false)
   const [consSaved, setConsSaved] = useState(false)
+  const [consDate, setConsDate] = useState('') // '' = hoy
 
   useEffect(() => {
     if (!tenant?.id) return
@@ -252,6 +301,8 @@ export default function SalesPage() {
   async function handleConsSubmit() {
     if (!consBarber) return toast.error('Elegí qué barbero consumió')
     if (!hasConsItems) return toast.error('Agregá al menos un ítem')
+    const purchaseDate = consDate || todayStr()
+    if (purchaseDate > todayStr()) return toast.error('La fecha no puede ser futura')
     setConsLoading(true)
 
     try {
@@ -262,7 +313,7 @@ export default function SalesPage() {
         ...i,
         tenant_id: tenant.id,
         barber_id: consBarber,
-        purchase_date: format(new Date(), 'yyyy-MM-dd'),
+        purchase_date: purchaseDate,
       }))
 
       if (stockEnabled) {
@@ -275,9 +326,10 @@ export default function SalesPage() {
       if (stockEnabled) await applyStockDelta(items, -1)
       toast.success('¡Consumo registrado!')
 
+      setSavedDate(purchaseDate)
       setConsSaved(true)
       setTimeout(() => {
-        setConsProducts({}); setConsDrinks({}); setConsBarber('')
+        setConsProducts({}); setConsDrinks({}); setConsBarber(''); setConsDate('')
         setConsSaved(false)
       }, 1200)
     } catch (e) {
@@ -291,6 +343,8 @@ export default function SalesPage() {
     if (!chosen) return toast.error('Elegí quién atendió (o "Solo local")')
     if (!hasServices && !hasShopItems) return toast.error('Agregá al menos un ítem')
     if (!paymentMethod) return toast.error('Seleccioná el método de pago')
+    const date = saleDate || todayStr()
+    if (date > todayStr()) return toast.error('La fecha no puede ser futura')
     setLoading(true)
 
     try {
@@ -321,17 +375,18 @@ export default function SalesPage() {
         barber_earnings: barberEarnings,
         shop_earnings: shopEarnings,
         surcharge_amt: surchargeAmt,
-        sale_date: format(new Date(), 'yyyy-MM-dd'),
+        sale_date: date,
       }).select().single()
       if (error) throw error
       if (items.length) await supabase.from('sale_items').insert(items.map(i => ({ ...i, sale_id: sale.id })))
       if (stockEnabled) await applyStockDelta(items, -1)
       toast.success('¡Venta registrada!')
 
+      setSavedDate(date)
       setSaved(true)
       setTimeout(() => {
         setSelServices({}); setSelProducts({}); setSelDrinks({})
-        setPaymentMethod(''); setTip(''); setSelectedBarber(''); setShopOnly(false)
+        setPaymentMethod(''); setTip(''); setSelectedBarber(''); setShopOnly(false); setSaleDate('')
         setSaved(false)
       }, 1200)
     } catch (e) {
@@ -348,6 +403,9 @@ export default function SalesPage() {
           <Check size={32} className="text-emerald-400" />
         </div>
         <p className="font-display text-2xl text-cream">{saved ? '¡Venta registrada!' : '¡Consumo registrado!'}</p>
+        {savedDate && savedDate !== todayStr() && (
+          <p className="text-amber-400 text-sm mt-1">Cargado al {dayLabel(savedDate)}</p>
+        )}
         <p className="text-cream/40 text-sm mt-1">Preparando nuevo registro...</p>
       </div>
     )
@@ -400,6 +458,8 @@ export default function SalesPage() {
 
       {tab === 'consumo' ? (
         <div className="pb-24 md:pb-0">
+          <DatePickerCard value={consDate} onChange={setConsDate} accent="violet" />
+
           <div className="card mb-3">
             <label className="label">¿Qué barbero consumió? *</label>
             <div className="flex flex-wrap gap-2 mt-1">
@@ -446,12 +506,15 @@ export default function SalesPage() {
               <span className="font-display text-2xl sm:text-3xl text-violet-300 truncate">${consTotal.toLocaleString('es-AR')}</span>
             </div>
             <button onClick={handleConsSubmit} disabled={consLoading} className="w-full py-2.5 rounded-lg bg-violet-300/15 border border-violet-300/40 text-violet-300 text-sm font-medium hover:bg-violet-300/25 transition-colors">
-              {consLoading ? 'Guardando...' : 'Confirmar consumo'}
+              {consLoading ? 'Guardando...' : consDate ? `Confirmar consumo del ${format(new Date(consDate + 'T12:00:00'), 'dd/MM')}` : 'Confirmar consumo'}
             </button>
           </div>
         </div>
       ) : (
       <>
+
+      {/* ── Fecha de la venta (por defecto hoy; se puede cargar un día pasado) ── */}
+      <DatePickerCard value={saleDate} onChange={setSaleDate} />
 
       {/* ── 1. Quién atiende — define qué servicios se ven y con qué % ── */}
       <div className="card mb-3">
@@ -680,7 +743,7 @@ export default function SalesPage() {
         )}
         <div className="flex gap-2">
           <button onClick={handleSubmit} disabled={loading} className="btn-gold flex-1 text-sm">
-            {loading ? 'Guardando...' : 'Confirmar venta'}
+            {loading ? 'Guardando...' : saleDate ? `Confirmar venta del ${format(new Date(saleDate + 'T12:00:00'), 'dd/MM')}` : 'Confirmar venta'}
           </button>
         </div>
       </div>

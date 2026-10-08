@@ -36,7 +36,9 @@ function SaleDetailRow({ sale, barbers, paymentMethods, showBarber, showDate }) 
         <p className="text-cream text-sm truncate">{itemsLabel || 'Sin ítems'}</p>
         <div className="flex flex-wrap gap-x-2 text-cream/35 text-xs mt-0.5">
           {showDate && <span className="capitalize">{format(new Date(sale.sale_date + 'T12:00:00'), 'd MMM', { locale: es })}</span>}
-          <span>{format(new Date(sale.created_at), 'HH:mm')}</span>
+          {format(new Date(sale.created_at), 'yyyy-MM-dd') === sale.sale_date
+            ? <span>{format(new Date(sale.created_at), 'HH:mm')}</span>
+            : <span className="text-amber-400/70">cargada el {format(new Date(sale.created_at), 'd MMM HH:mm', { locale: es })}</span>}
           {showBarber && barber && <span>· {barber.name}</span>}
           <span>· {pm?.name || '—'}</span>
           {Number(sale.tip) > 0 && <span className="text-gold/50">· propina ${fmt(sale.tip)}</span>}
