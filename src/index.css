@@ -165,6 +165,8 @@ html.theme-switching *::after {
     placeholder-color: rgba(var(--text-base), 0.3);
   }
   .input-dark::placeholder { color: rgba(var(--text-base) / 0.35); opacity: 1; }
+  /* Desplegables: dejar lugar a la flecha (si no, el texto se monta encima) */
+  select.input-dark { padding-right: 2.5rem; }
 
   .label {
     @apply text-cream/50 text-[11px] font-bold uppercase tracking-widest mb-2 block;
@@ -438,3 +440,7 @@ html.light .hover\:bg-dark-400:hover { background-color: rgb(var(--surface-borde
 html.light .bg-dark\/80,
 html.light .bg-dark\/70,
 html.light .bg-dark\/60 { background-color: rgb(28 25 23 / 0.38); }
+
+/* Deslizadores (comisión del barbero): con dorado claro Chrome pinta la parte
+   vacía casi negra; con un dorado más profundo usa un riel claro */
+html.light .accent-gold { accent-color: #8a6516; }

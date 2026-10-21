@@ -150,7 +150,7 @@ export default function StatsPage() {
           </button>
         ))}
         <select
-          className="bg-dark-300 text-cream/60 text-xs rounded-full px-3 py-1.5 border border-dark-400 outline-none ml-auto"
+          className="bg-dark-300 text-cream/60 text-xs rounded-full pl-3 pr-8 py-1.5 border border-dark-400 outline-none ml-auto"
           value={barberFilter}
           onChange={e => setBarberFilter(e.target.value)}
         >
