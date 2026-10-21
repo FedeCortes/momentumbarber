@@ -232,7 +232,7 @@ export default function BarberHistoryPage() {
             </div>
           </div>
           <p className="text-cream/25 text-[11px] mt-3 pt-3 border-t border-dark-400/30">
-            Tu comisión por servicios más las propinas que cargaste.
+            Tu comisión por servicios y productos, más las propinas que cargaste.
           </p>
         </div>
       )}
