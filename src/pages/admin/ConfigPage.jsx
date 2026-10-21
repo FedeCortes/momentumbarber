@@ -255,8 +255,130 @@ function GeneralCommission({ kind, tenantId }) {
   )
 }
 
-function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false, showPhoto = false, showCommission = false }) {
+// Alta / edición de un producto o bebida en un modal: nombre, precio,
+// comisión del barbero ($ o %), precio de barbero y stock.
+function CatalogItemModal({ open, item, onClose, onSaved, tableName, tenantId, singular, showPrice, showBarberPrice, showStock, showCommission, showPhoto, generalCut }) {
+  const isNew = !item
+  const empty = { name: '', price: '', commission: '', commType: 'amt', barberPrice: '', stock: '', minStock: '' }
+  const [f, setF] = useState(empty)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setF(item ? {
+      name:        item.name || '',
+      price:       item.price != null ? String(Number(item.price)) : '',
+      commission:  item.barber_commission_amt != null ? String(Number(item.barber_commission_amt))
+                   : item.barber_commission_pct != null ? String(Number(item.barber_commission_pct)) : '',
+      commType:    item.barber_commission_pct != null && item.barber_commission_amt == null ? 'pct' : 'amt',
+      barberPrice: item.barber_price != null ? String(Number(item.barber_price)) : '',
+      stock:       '',
+      minStock:    item.min_stock != null ? String(Number(item.min_stock)) : '',
+    } : empty)
+  }, [open, item?.id])
+
+  const set = patch => setF(prev => ({ ...prev, ...patch }))
+
+  async function save() {
+    if (!f.name.trim()) return toast.error('El nombre es obligatorio')
+    if (showPrice && (f.price === '' || Number(f.price) < 0)) return toast.error('Poné el precio')
+    if (showCommission && commissionInvalid(f.commission, f.commType)) return toast.error('Comisión inválida (el % va de 0 a 100)')
+    const payload = {
+      name: f.name.trim(),
+      ...(showPrice ? { price: Number(f.price) || 0 } : {}),
+      ...(showBarberPrice ? { barber_price: f.barberPrice === '' ? null : Number(f.barberPrice) } : {}),
+      // Vacío = sin comisión propia (usa la general) · 0 = este ítem no deja comisión
+      ...(showCommission ? commissionColumns(f.commission, f.commType) : {}),
+      ...(showStock ? { min_stock: Number(f.minStock) || 0 } : {}),
+      ...(showStock && isNew ? { stock: Number(f.stock) || 0 } : {}),
+    }
+    setSaving(true)
+    const { error } = isNew
+      ? await supabase.from(tableName).insert({ ...payload, tenant_id: tenantId })
+      : await supabase.from(tableName).update(payload).eq('id', item.id)
+    setSaving(false)
+    if (error) return toast.error(error.message)
+    toast.success(isNew ? `${singular[0].toUpperCase()}${singular.slice(1)} ${singular.endsWith('a') ? 'creada' : 'creado'}` : 'Cambios guardados')
+    onSaved()
+  }
+
+  const onEnter = e => { if (e.key === 'Enter') { e.preventDefault(); save() } }
+  const hint = 'text-cream/30 text-[11px] mt-1 leading-snug'
+  const nuevo = singular.endsWith('a') ? 'Nueva' : 'Nuevo'
+
+  return (
+    <Modal open={open} onClose={onClose} title={isNew ? `${nuevo} ${singular}` : `Editar ${singular}`}>
+      <div className="flex flex-col gap-4">
+        <div>
+          <label className="label">Nombre *</label>
+          <input className="input-dark" autoFocus value={f.name} onChange={e => set({ name: e.target.value })} onKeyDown={onEnter} placeholder={tableName === 'drinks' ? 'Ej: Coca 500ml' : 'Ej: Cera mate 100g'} />
+        </div>
+
+        {showPrice && (
+          <div>
+            <label className="label">Precio de venta *</label>
+            <input type="number" min="0" inputMode="numeric" className="input-dark" value={f.price} onChange={e => set({ price: e.target.value })} onKeyDown={onEnter} placeholder="0" />
+          </div>
+        )}
+
+        {showCommission && (
+          <div>
+            <label className="label">Comisión para el barbero</label>
+            <CommissionInput value={f.commission} type={f.commType} onChange={(v, t) => set({ commission: v, commType: t })} onKeyDown={onEnter}
+              placeholder={generalCut ? `General: ${cutLabel(generalCut)}` : 'Sin comisión'} />
+            <p className={hint}>
+              Lo que se lleva el barbero que lo vende (en $ es por unidad). Vacío = {generalCut ? `usa la general (${cutLabel(generalCut)})` : 'no deja comisión'} · 0 = no deja comisión.
+            </p>
+          </div>
+        )}
+
+        {showBarberPrice && (
+          <div>
+            <label className="label">Precio barbero</label>
+            <input type="number" min="0" inputMode="numeric" className="input-dark" value={f.barberPrice} onChange={e => set({ barberPrice: e.target.value })} onKeyDown={onEnter}
+              placeholder={f.price !== '' ? `Igual al precio ($${Number(f.price).toLocaleString('es-AR')})` : 'Igual al precio'} />
+            <p className={hint}>Lo que paga un barbero si lo compra para él. Vacío = el precio normal.</p>
+          </div>
+        )}
+
+        {showStock && (
+          <div className="grid grid-cols-2 gap-3">
+            {isNew && (
+              <div>
+                <label className="label">Stock inicial</label>
+                <input type="number" min="0" inputMode="numeric" className="input-dark" value={f.stock} onChange={e => set({ stock: e.target.value })} onKeyDown={onEnter} placeholder="0" />
+              </div>
+            )}
+            <div className={isNew ? '' : 'col-span-2'}>
+              <label className="label">Stock mínimo</label>
+              <input type="number" min="0" inputMode="numeric" className="input-dark" value={f.minStock} onChange={e => set({ minStock: e.target.value })} onKeyDown={onEnter} placeholder="0" />
+            </div>
+            <p className={`${hint} col-span-2 -mt-2`}>
+              Al llegar al mínimo o menos, queda en rojo para reponer.{!isNew && ' Las unidades se ajustan con − / + en la lista.'}
+            </p>
+          </div>
+        )}
+
+        {showPhoto && isNew && (
+          <p className="text-cream/30 text-xs">La foto se agrega después, tocando la miniatura en la lista.</p>
+        )}
+
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
+          <button type="button" onClick={save} disabled={saving || !f.name.trim()} className="btn-gold flex-1">
+            {saving ? 'Guardando...' : isNew ? `Crear ${singular}` : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false, showPhoto = false, showCommission = false, singular = 'ítem' }) {
   const [items, setItems] = useState([])
+  // Con campos extra (productos, bebidas) el alta y la edición van en un modal
+  const useModal = showBarberPrice || showCommission || showStock
+  const [formItem, setFormItem] = useState(undefined) // undefined = cerrado · null = nuevo · item = editar
   const [quickName, setQuickName] = useState('')
   const [quickPrice, setQuickPrice] = useState('')
   const [quickBarberPrice, setQuickBarberPrice] = useState('')
@@ -342,7 +464,8 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
   }
 
   async function handleDelete() {
-    await supabase.from(tableName).delete().eq('id', deleteId)
+    const { error } = await supabase.from(tableName).delete().eq('id', deleteId)
+    if (error) return toast.error(error.message)
     toast.success('Eliminado')
     setDeleteId(null)
     load()
@@ -353,6 +476,12 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       <h3 className="font-display text-lg text-cream mb-4">{title}</h3>
       {showCommission && <GeneralCommission kind={tableName === 'drinks' ? 'drink' : 'product'} tenantId={tenantId} />}
 
+      {useModal ? (
+        <button type="button" onClick={() => setFormItem(null)}
+          className="w-full rounded-xl border border-dashed border-dark-400 text-cream/60 hover:text-gold hover:border-gold/50 text-sm py-3 mb-4 flex items-center justify-center gap-2 transition-colors">
+          <Plus size={16} /> Agregar {singular}
+        </button>
+      ) : (<>
       {/* Carga rápida */}
       <div className="rounded-xl border border-dark-400/50 bg-dark-300/25 p-3 mb-4">
         <div className="flex gap-2">
@@ -437,8 +566,10 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
         </p>
       )}
 
+      </>)}
+
       {showPhoto && (
-        <p className="text-cream/30 text-xs -mt-3 mb-4">
+        <p className="text-cream/30 text-xs mb-4">
           Tocá la miniatura de un ítem ya creado para ponerle o cambiarle la foto.
         </p>
       )}
@@ -550,7 +681,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                     </span>
                   )}
                   <div className="flex gap-0.5 shrink-0">
-                    <button onClick={() => startEdit(item)} className="btn-ghost p-1.5">
+                    <button onClick={() => useModal ? setFormItem(item) : startEdit(item)} className="btn-ghost p-1.5">
                       <Pencil size={14} className="text-cream/40" />
                     </button>
                     <button onClick={() => setDeleteId(item.id)} className="btn-ghost p-1.5 text-red-400/50 hover:text-red-400">
@@ -567,6 +698,18 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
             </div>
           ))}
         </div>
+      )}
+
+      {useModal && (
+        <CatalogItemModal
+          open={formItem !== undefined}
+          item={formItem || null}
+          onClose={() => setFormItem(undefined)}
+          onSaved={() => { setFormItem(undefined); load() }}
+          tableName={tableName} tenantId={tenantId} singular={singular}
+          showPrice={showPrice} showBarberPrice={showBarberPrice} showStock={showStock}
+          showCommission={showCommission} showPhoto={showPhoto} generalCut={generalCut}
+        />
       )}
 
       <ConfirmDialog
@@ -788,8 +931,8 @@ export default function ConfigPage() {
       </div>
 
       <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
-      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} showPhoto />
-      <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} />
+      <CatalogSection title="Productos de vitrina" tableName="products" singular="producto" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} showPhoto />
+      <CatalogSection title="Bebidas" tableName="drinks" singular="bebida" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} />
       <CatalogSection title="Pagadores" tableName="expense_payers" tenantId={tenant.id} showPrice={false} />
       <PaymentMethodSection tenantId={tenant.id} />
 
