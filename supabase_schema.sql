@@ -399,7 +399,8 @@ create policy "config_tenant"   on public.tenant_config for all using (tenant_id
 -- CLIENTES
 -- DDL: supabase_migration_customers.sql
 --   · customers (name, phone opcional, phone_key normalizado y único por
---     barbería cuando hay celular); RLS root + tenant
+--     barbería cuando hay celular, existing_before = "ya venía antes de la
+--     app": nunca cuenta como nuevo); RLS root + tenant
 --   · sales + customer_id (opcional). Cliente nuevo en un período = su
 --     primera venta cae dentro del período.
 -- ============================================================

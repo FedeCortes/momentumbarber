@@ -94,7 +94,8 @@ export default function CustomersPage() {
       (digits.length >= 3 && String(r.phone || '').replace(/\D/g, '').includes(digits)))
   }, [rows, q])
 
-  const newThisMonth = rows.filter(r => r.first && r.first >= monthStart).length
+  const isNewThisMonth = r => !r.existing_before && r.first && r.first >= monthStart
+  const newThisMonth = rows.filter(isNewThisMonth).length
   const open = rows.find(r => r.id === openId) || null
   const barberName = id => barbers.find(b => b.id === id)?.name || 'Solo local'
 
@@ -180,7 +181,7 @@ export default function CustomersPage() {
           ) : (
             <div className="flex flex-col gap-2">
               {filtered.map(r => {
-                const isNew = r.first && r.first >= monthStart
+                const isNew = isNewThisMonth(r)
                 return (
                   <button key={r.id} onClick={() => { setOpenId(r.id); setEditing(false) }}
                     className="card card-hover !py-3 flex items-center gap-3 text-left">
@@ -191,6 +192,7 @@ export default function CustomersPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-cream text-sm font-medium truncate">{r.name || 'Sin nombre'}</span>
                         {isNew && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2 py-0.5">Nuevo</span>}
+                        {r.existing_before && <span className="text-[10px] font-semibold uppercase tracking-wide text-gold/80 bg-gold/10 border border-gold/20 rounded-full px-2 py-0.5">De antes</span>}
                       </div>
                       <p className="text-cream/40 text-xs truncate mt-0.5">
                         {r.visits.length
@@ -222,7 +224,9 @@ export default function CustomersPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-cream/45 text-xs">{open.phone || 'Sin celular'}</p>
-                {open.first && <p className="text-cream/30 text-xs mt-0.5">Cliente desde el {dayLabel(open.first)}</p>}
+                {open.existing_before
+                  ? <p className="text-gold/70 text-xs mt-0.5">Ya venía antes de usar la app</p>
+                  : open.first && <p className="text-cream/30 text-xs mt-0.5">Cliente desde el {dayLabel(open.first)}</p>}
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {waLink(open.phone) && (
@@ -257,7 +261,7 @@ export default function CustomersPage() {
                       <div className="min-w-0">
                         <p className="text-cream/80 text-sm capitalize">
                           {dayLabel(s.sale_date)}
-                          {i === open.visits.length - 1 && <span className="ml-2 text-[10px] text-emerald-400 normal-case">primera vez</span>}
+                          {i === open.visits.length - 1 && !open.existing_before && <span className="ml-2 text-[10px] text-emerald-400 normal-case">primera vez</span>}
                         </p>
                         <p className="text-cream/35 text-xs">{barberName(s.barber_id)}</p>
                       </div>

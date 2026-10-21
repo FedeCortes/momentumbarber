@@ -22,7 +22,8 @@ export default function CustomerPicker({ tenantId, value, onChange }) {
           <p className="text-cream text-sm font-medium truncate">{value.name || 'Sin nombre'}</p>
           <p className="text-cream/45 text-xs truncate">
             {value.phone || 'Sin celular'}
-            {value._isNew && <span className="ml-2 text-emerald-400">· cliente nuevo</span>}
+            {value._isNew && !value.existing_before && <span className="ml-2 text-emerald-400">· cliente nuevo</span>}
+            {value.existing_before && <span className="ml-2 text-cream/40">· de antes</span>}
           </p>
         </div>
         <button onClick={() => onChange(null)} className="text-cream/35 hover:text-cream shrink-0 p-1" title="Quitar cliente">
@@ -49,7 +50,12 @@ export default function CustomerPicker({ tenantId, value, onChange }) {
 }
 
 export function CustomerForm({ initial, onSubmit, onCancel, submitLabel = 'Guardar', saving }) {
-  const [form, setForm] = useState({ name: initial?.name || '', phone: initial?.phone || '' })
+  // existing_before: null = sin elegir (al crear hay que elegir) · true = ya venía · false = nuevo
+  const [form, setForm] = useState({
+    name: initial?.name || '',
+    phone: initial?.phone || '',
+    existing_before: initial?.id ? !!initial.existing_before : null,
+  })
   return (
     <div className="flex flex-col gap-4">
       <div>
@@ -62,9 +68,26 @@ export function CustomerForm({ initial, onSubmit, onCancel, submitLabel = 'Guard
         <input className="input-dark" inputMode="tel" value={form.phone} placeholder="Ej: 11 2345 6789"
                onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
       </div>
+      <div>
+        <label className="label">¿Es cliente nuevo? *</label>
+        <div className="grid grid-cols-2 gap-2">
+          {[[false, 'Cliente nuevo', 'Primera vez en el local'], [true, 'Ya venía antes', 'Era cliente de antes']].map(([v, t, sub]) => (
+            <button key={t} type="button" onClick={() => setForm(f => ({ ...f, existing_before: v }))}
+              className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                form.existing_before === v
+                  ? (v ? 'border-gold/60 bg-gold/12' : 'border-emerald-400/60 bg-emerald-400/12')
+                  : 'border-dark-400 hover:border-dark-500'
+              }`}>
+              <p className={`text-sm font-medium ${form.existing_before === v ? (v ? 'text-gold' : 'text-emerald-400') : 'text-cream/70'}`}>{t}</p>
+              <p className="text-cream/35 text-[11px] mt-0.5">{sub}</p>
+            </button>
+          ))}
+        </div>
+        <p className="text-cream/30 text-[11px] mt-1.5">Los que ya venían no cuentan como nuevos en el cierre.</p>
+      </div>
       <div className="flex gap-3">
         <button type="button" onClick={onCancel} className="btn-ghost flex-1">Cancelar</button>
-        <button type="button" onClick={() => onSubmit(form)} disabled={saving || !form.name.trim()} className="btn-gold flex-1">
+        <button type="button" onClick={() => onSubmit(form)} disabled={saving || !form.name.trim() || form.existing_before === null} className="btn-gold flex-1">
           {saving ? 'Guardando...' : submitLabel}
         </button>
       </div>
@@ -127,7 +150,7 @@ function PickerBody({ tenantId, onPick }) {
 
       <button type="button" onClick={() => setMode('new')}
         className="flex items-center gap-2 text-gold/80 hover:text-gold text-sm py-1">
-        <UserPlus size={15} /> Nuevo cliente{q.trim() ? `: «${q.trim()}»` : ''}
+        <UserPlus size={15} /> {q.trim() ? `Cargar «${q.trim()}»` : 'Cargar cliente'}
       </button>
 
       {loading ? (
@@ -148,7 +171,7 @@ function PickerBody({ tenantId, onPick }) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-cream text-sm truncate">{c.name || 'Sin nombre'}</p>
-                <p className="text-cream/40 text-xs truncate">{c.phone || 'Sin celular'}</p>
+                <p className="text-cream/40 text-xs truncate">{c.phone || 'Sin celular'}{c.existing_before ? ' · de antes' : ''}</p>
               </div>
             </button>
           ))}

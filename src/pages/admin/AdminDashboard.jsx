@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ShoppingBag, Users, TrendingUp, Moon, FileText, ArrowRight, AlertCircle, ReceiptText } from 'lucide-react'
+import { ShoppingBag, Users, TrendingUp, Moon, FileText, ArrowRight, AlertCircle, ReceiptText, Contact } from 'lucide-react'
+import { customerGrowth } from '../../lib/customers'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { format } from 'date-fns'
@@ -22,6 +23,7 @@ export default function AdminDashboard() {
   const { tenant } = useAuth()
   const [stats, setStats] = useState({ todaySales: 0, todayTotal: 0, monthTotal: 0, barberCount: 0, todayDrafts: 0, todayShop: 0, monthExpenses: 0 })
   const [loading, setLoading] = useState(true)
+  const [growth, setGrowth] = useState(null) // clientes nuevos; null = cargando o falló (no se muestra)
   const today = format(new Date(), 'yyyy-MM-dd')
   const month = format(new Date(), 'yyyy-MM')
 
@@ -59,6 +61,16 @@ export default function AdminDashboard() {
     if (!tenant?.id) return
     loadStats()
   }, [tenant?.id, loadStats])
+
+  // Clientes nuevos: carga aparte, si falla el dashboard se ve igual
+  useEffect(() => {
+    if (!tenant?.id) return
+    let alive = true
+    customerGrowth(tenant.id, month + '-01')
+      .then(g => { if (alive) setGrowth(g) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [tenant?.id, month])
 
   const todayLabel = format(new Date(), "EEEE d 'de' MMMM", { locale: es })
 
@@ -115,6 +127,33 @@ export default function AdminDashboard() {
             <span className="font-display text-2xl text-red-400/85">${stats.monthExpenses.toLocaleString('es-AR')}</span>
           </div>
         </div>
+      )}
+
+      {/* Clientes nuevos */}
+      {growth && (
+        <Link to="/admin/customers" className="card-hover flex items-center gap-4 mb-7 group">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center border text-emerald-400 bg-emerald-500/12 border-emerald-500/20 shrink-0">
+            <Contact size={18} />
+          </div>
+          {growth.since ? (
+            <div className="flex-1 grid grid-cols-2 gap-3 min-w-0">
+              <div className="min-w-0">
+                <p className="stat-label">Clientes nuevos este mes</p>
+                <p className="font-display text-2xl text-emerald-400">{growth.newMonth}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="stat-label">Nuevos desde el {format(new Date(growth.since + 'T12:00:00'), 'd/M/yy')}</p>
+                <p className="font-display text-2xl text-cream">{growth.newTotal}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 min-w-0">
+              <p className="text-cream font-medium text-sm">Clientes</p>
+              <p className="text-cream/35 text-xs leading-snug">Cargá el cliente en cada venta y acá vas a ver cuántos nuevos se suman.</p>
+            </div>
+          )}
+          <ArrowRight size={13} className="text-cream/15 group-hover:text-cream/35 transition-colors shrink-0" />
+        </Link>
       )}
 
       {/* Acceso rápido */}

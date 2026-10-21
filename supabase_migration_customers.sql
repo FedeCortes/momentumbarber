@@ -46,3 +46,9 @@ create policy "customers_tenant" on public.customers for all using (tenant_id = 
 alter table public.sales
   add column if not exists customer_id uuid references public.customers(id) on delete set null;
 create index if not exists sales_customer_idx on public.sales (tenant_id, customer_id, sale_date);
+
+-- ── Cliente "de antes" ───────────────────────────────────────
+-- El local ya tenía clientes antes de usar la app: al cargarlos se marcan
+-- como "ya venía antes" y nunca cuentan como nuevos en el cierre.
+alter table public.customers
+  add column if not exists existing_before boolean not null default false;

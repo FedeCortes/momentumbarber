@@ -4,7 +4,9 @@
 // Un cliente tiene nombre y, opcionalmente, celular. El celular se guarda
 // también normalizado (phone_key) para no cargar dos veces a la misma persona.
 // Las visitas son las ventas oficiales que tienen ese cliente (sales.customer_id).
-// Cliente NUEVO en un período = su primera visita cae dentro de ese período.
+// Cliente NUEVO en un período = su primera visita cae dentro de ese período,
+// salvo que esté marcado como «ya venía antes» (existing_before): esos ya eran
+// clientes del local antes de usar la app y nunca cuentan como nuevos.
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase'
 
@@ -45,7 +47,7 @@ export async function searchCustomers(tenantId, term, limit = 8) {
  * Crea un cliente. Si ya hay uno con ese celular, devuelve ese (sin duplicar).
  * @returns { customer, existed }
  */
-export async function createCustomer(tenantId, { name, phone }) {
+export async function createCustomer(tenantId, { name, phone, existing_before }) {
   const cleanName = String(name || '').trim()
   if (!cleanName) throw new Error('El nombre es obligatorio')
   const key = normPhone(phone)
@@ -62,13 +64,14 @@ export async function createCustomer(tenantId, { name, phone }) {
     name: cleanName,
     phone: String(phone || '').trim() || null,
     phone_key: key,
+    existing_before: !!existing_before,
   }).select().single()
   if (error) throw error
   return { customer: data, existed: false }
 }
 
 /** Actualiza nombre / celular. Avisa si el celular ya es de otro cliente. */
-export async function updateCustomer(tenantId, id, { name, phone }) {
+export async function updateCustomer(tenantId, id, { name, phone, existing_before }) {
   const cleanName = String(name || '').trim()
   if (!cleanName) throw new Error('El nombre es obligatorio')
   const key = normPhone(phone)
@@ -81,6 +84,7 @@ export async function updateCustomer(tenantId, id, { name, phone }) {
     name: cleanName,
     phone: String(phone || '').trim() || null,
     phone_key: key,
+    existing_before: !!existing_before,
     updated_at: new Date().toISOString(),
   }).eq('id', id).select().single()
   if (error) throw error
@@ -116,11 +120,42 @@ export async function customerStatsForRange(tenantId, sales, from) {
     const [prev, info] = await Promise.all([
       fetchAllRows(() => supabase.from('sales').select('customer_id').eq('tenant_id', tenantId)
         .in('customer_id', chunk).lt('sale_date', from).order('id')),
-      supabase.from('customers').select('id,name,phone').in('id', chunk),
+      supabase.from('customers').select('id,name,phone,existing_before').in('id', chunk),
     ])
     if (info.error) throw info.error
     for (const r of prev) returning.add(r.customer_id)
-    for (const c of info.data || []) customers[c.id] = c
+    for (const c of info.data || []) {
+      customers[c.id] = c
+      if (c.existing_before) returning.add(c.id)   // ya venía antes de la app
+    }
   }
   return { attended: ids, newIds: new Set(ids.filter(id => !returning.has(id))), customers }
+}
+
+/**
+ * Crecimiento de clientes para el Dashboard: nuevos este mes y nuevos desde
+ * que se empezó a cargar clientes (primera venta con cliente = la mudanza).
+ * Los marcados "ya venía antes" nunca cuentan.
+ * @returns { since, newTotal, newMonth } — since = null si todavía no hay ventas con cliente
+ */
+export async function customerGrowth(tenantId, monthStart) {
+  const [visits, before] = await Promise.all([
+    fetchAllRows(() => supabase.from('sales').select('customer_id,sale_date')
+      .eq('tenant_id', tenantId).not('customer_id', 'is', null).order('id')),
+    fetchAllRows(() => supabase.from('customers').select('id')
+      .eq('tenant_id', tenantId).eq('existing_before', true).order('id')),
+  ])
+  const first = {}
+  for (const v of visits) {
+    if (!first[v.customer_id] || v.sale_date < first[v.customer_id]) first[v.customer_id] = v.sale_date
+  }
+  const dates = Object.values(first)
+  if (dates.length === 0) return { since: null, newTotal: 0, newMonth: 0 }
+  const old = new Set(before.map(c => c.id))
+  const fresh = Object.entries(first).filter(([id]) => !old.has(id)).map(([, d]) => d)
+  return {
+    since:    dates.reduce((a, b) => (a < b ? a : b)),
+    newTotal: fresh.length,
+    newMonth: fresh.filter(d => d >= monthStart).length,
+  }
 }
