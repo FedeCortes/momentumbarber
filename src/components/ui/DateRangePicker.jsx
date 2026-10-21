@@ -73,21 +73,21 @@ export default function DateRangePicker({ from, to, onChange, max = TODAY }) {
 
       {/* Inputs desde / hasta */}
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1.5 bg-dark-300 border border-dark-400 rounded-lg px-3 py-2 flex-1">
+        <div className="date-field flex items-center gap-1.5 bg-dark-300 border border-dark-400 rounded-lg px-3 py-2 flex-1">
           <Calendar size={13} className="text-cream/30 shrink-0" />
           <input
             type="date"
             value={from}
             max={max}
             onChange={e => setFrom(e.target.value)}
-            className="bg-transparent text-cream/80 text-xs w-full outline-none"
+            className="bg-transparent border-0 p-0 focus:ring-0 text-cream/80 text-xs w-full outline-none"
           />
         </div>
 
         {/* Indicador de rango vs día único */}
         <span className={`text-xs shrink-0 font-medium ${isSingle ? 'text-cream/20' : 'text-gold'}`}>→</span>
 
-        <div className={`flex items-center gap-1.5 bg-dark-300 border rounded-lg px-3 py-2 flex-1 ${isSingle ? 'border-dark-400' : 'border-gold/40'}`}>
+        <div className={`date-field flex items-center gap-1.5 bg-dark-300 border rounded-lg px-3 py-2 flex-1 ${isSingle ? 'border-dark-400' : 'border-gold/40'}`}>
           <Calendar size={13} className={`shrink-0 ${isSingle ? 'text-cream/30' : 'text-gold/60'}`} />
           <input
             type="date"
@@ -95,7 +95,7 @@ export default function DateRangePicker({ from, to, onChange, max = TODAY }) {
             min={from}
             max={max}
             onChange={e => setTo(e.target.value)}
-            className="bg-transparent text-cream/80 text-xs w-full outline-none"
+            className="bg-transparent border-0 p-0 focus:ring-0 text-cream/80 text-xs w-full outline-none"
           />
         </div>
       </div>

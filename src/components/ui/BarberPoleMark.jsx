@@ -17,6 +17,8 @@ export default function BarberPoleMark({ size = 32, radius = 8, className = '', 
       className={className}
       aria-hidden="true"
       {...props}
+      // Mismo redondeo que la chapa: así la sombra sigue la forma y no marca un cuadrado
+      style={{ borderRadius: `${(radius / 32) * 100}%`, ...props.style }}
     >
       <defs>
         <linearGradient id={grad} x1="0" y1="0" x2="0" y2="1">

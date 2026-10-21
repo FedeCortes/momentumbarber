@@ -42,20 +42,20 @@ html.light {
   --gold-light: 210 172 84;
   --gold-dark:  150 114 30;
 
-  /* ── Light theme surfaces (neutral, clean) ── */
-  --surface-page:   230 230 230;
-  --surface-card:   255 255 255;
-  --surface-input:  218 218 218;
-  --surface-border:  16  16  16;
-  --surface-raised:  40  40  40;
+  /* ── Light theme surfaces (cálido y limpio: blanco hueso + arena) ── */
+  --surface-page:   246 244 240;   /* fondo de página: blanco hueso */
+  --surface-card:   255 255 255;   /* tarjetas */
+  --surface-input:  242 239 234;   /* paneles internos / chips */
+  --surface-border: 138 128 114;   /* base de bordes (se usa con transparencia) */
+  --surface-raised: 110 101  89;
 
-  /* ── Light theme text ── */
-  --text-base: 6 6 6;
+  /* ── Light theme text: casi negro cálido (no negro puro) ── */
+  --text-base: 28 25 23;
 
-  /* ── Shadows – neutral black-based ── */
-  --sh-card:    0 1px 3px rgba(0,0,0,0.13), 0 4px 18px rgba(0,0,0,0.08);
-  --sh-hover:   0 4px 18px rgba(0,0,0,0.17), 0 1px 4px rgba(0,0,0,0.10);
-  --sh-modal:   0 8px 48px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.12);
+  /* ── Shadows – suaves, apenas marcan la tarjeta ── */
+  --sh-card:    0 1px 2px rgba(41,37,36,0.05), 0 1px 3px rgba(41,37,36,0.04);
+  --sh-hover:   0 6px 20px rgba(41,37,36,0.08), 0 2px 6px rgba(41,37,36,0.05);
+  --sh-modal:   0 24px 64px rgba(41,37,36,0.18), 0 4px 16px rgba(41,37,36,0.08);
   --sh-gold:    0 0 0 1px rgba(148,110,18,0.45);
   --sh-gold-md: 0 4px 24px rgba(148,110,18,0.20);
 }
@@ -246,16 +246,16 @@ html.light ::-webkit-scrollbar-track { background: rgb(var(--surface-page)); }
 html.light ::-webkit-scrollbar-thumb { background: rgb(0 0 0 / 0.35); border-radius: 9999px; }
 
 /* Sidebar */
-html.light aside { border-right-color: rgb(var(--surface-border) / 0.25); }
+html.light aside { border-right-color: rgb(var(--surface-border) / 0.20); }
 
 /* Cards – borde oscuro visible en light */
 html.light .card,
 html.light .card-flat,
 html.light .stat-card {
-  border-color: rgb(var(--surface-border) / 0.28);
+  border-color: rgb(var(--surface-border) / 0.22);
 }
 html.light .card-hover {
-  border-color: rgb(var(--surface-border) / 0.28);
+  border-color: rgb(var(--surface-border) / 0.22);
 }
 html.light .card-hover:hover {
   border-color: rgb(var(--gold) / 0.60);
@@ -263,9 +263,12 @@ html.light .card-hover:hover {
 
 /* Inputs – fondo gris y borde oscuro en light */
 html.light .input-dark {
-  background: rgb(var(--surface-input));
-  border-color: rgb(var(--surface-border) / 0.38);
+  background: rgb(252 251 249);
+  border-color: rgb(var(--surface-border) / 0.32);
   color: rgb(var(--text-base));
+}
+html.light .input-dark:hover:not(:focus):not(:disabled) {
+  border-color: rgb(var(--surface-border) / 0.50);
 }
 html.light .input-dark:focus {
   background: rgb(var(--surface-card));
@@ -399,3 +402,39 @@ html.light .section-divider::before,
 html.light .section-divider::after {
   border-color: rgb(var(--surface-border) / 0.15);
 }
+
+/* ───────────────────────────────────────────────────────────
+   TERMINACIÓN PROFESIONAL EN MODO CLARO
+   Bordes: la base es arena (no negro) y acá se suavizan todas las
+   variantes para que las tarjetas y campos se vean finos, no "dibujados".
+─────────────────────────────────────────────────────────── */
+html.light .border-dark-400      { border-color: rgb(var(--surface-border) / 0.40); }
+html.light .border-dark-400\/70  { border-color: rgb(var(--surface-border) / 0.36); }
+html.light .border-dark-400\/60  { border-color: rgb(var(--surface-border) / 0.30); }
+html.light .border-dark-400\/50  { border-color: rgb(var(--surface-border) / 0.26); }
+html.light .border-dark-400\/40  { border-color: rgb(var(--surface-border) / 0.22); }
+html.light .border-dark-400\/30  { border-color: rgb(var(--surface-border) / 0.18); }
+html.light .border-dark-400\/25  { border-color: rgb(var(--surface-border) / 0.16); }
+html.light .border-dark-400\/15  { border-color: rgb(var(--surface-border) / 0.12); }
+html.light .border-dark-300      { border-color: rgb(var(--surface-border) / 0.18); }
+html.light .divide-dark-300 > :not([hidden]) ~ :not([hidden]) { border-color: rgb(var(--surface-border) / 0.16); }
+
+/* Menú lateral blanco, como la barra de arriba */
+html.light aside { background: rgb(var(--surface-card)); }
+
+/* Selector de fechas: un solo recuadro fino */
+html.light .date-field { background: rgb(252 251 249); border-color: rgb(var(--surface-border) / 0.32); }
+html.light .date-field.border-gold\/40 { border-color: rgb(var(--gold) / 0.55); }
+
+/* Rellenos con el tono de borde (botón − deshabilitado, filas resaltadas):
+   en claro, apenas un velo arena en vez de gris marrón */
+html.light .bg-dark-400        { background-color: rgb(var(--surface-border) / 0.20); }
+html.light .bg-dark-400\/30    { background-color: rgb(var(--surface-border) / 0.12); }
+html.light .bg-dark-400\/25    { background-color: rgb(var(--surface-border) / 0.10); }
+html.light .bg-dark-400\/20    { background-color: rgb(var(--surface-border) / 0.08); }
+html.light .hover\:bg-dark-400:hover { background-color: rgb(var(--surface-border) / 0.20); }
+
+/* Fondo detrás de modales: en claro, velo oscuro suave (no blanco lavado) */
+html.light .bg-dark\/80,
+html.light .bg-dark\/70,
+html.light .bg-dark\/60 { background-color: rgb(28 25 23 / 0.38); }
