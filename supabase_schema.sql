@@ -40,6 +40,8 @@ create table public.barbers (
   name            text not null,
   photo_url       text,
   commission_pct  numeric(5,2) not null default 50.00,
+  product_commission_pct numeric(5,2) not null default 0,  -- % general de vitrina (0 = 100% local)
+  drink_commission_pct   numeric(5,2) not null default 0,  -- % general de bebidas (0 = 100% local)
   password_hash   text,        -- bcrypt hash, opcional
   is_active       boolean default true,
   created_at      timestamptz default now()

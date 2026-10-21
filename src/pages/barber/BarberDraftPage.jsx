@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, Plus, Minus, Clock, ChevronDown, ChevronUp, Store, ArrowLeft, HelpCircle, AlertTriangle, ImageOff } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -147,7 +147,23 @@ function TodayDrafts({ barberId, tenantId, paymentMethods, refreshKey }) {
 
 export default function BarberDraftPage() {
   const { tenant, barberSession, stockEnabled } = useAuth()
-  const barber = barberSession?.barber
+  const sessionBarber = barberSession?.barber
+  // La sesión del barbero se guarda en el celular al entrar: se relee su fila para
+  // usar las comisiones vigentes (si el dueño las cambió después, se ven igual).
+  const [freshBarber, setFreshBarber] = useState(null)
+  useEffect(() => {
+    if (!sessionBarber?.id) return
+    let alive = true
+    supabase.from('barbers')
+      .select('id,name,commission_pct,product_commission_pct,drink_commission_pct')
+      .eq('id', sessionBarber.id).maybeSingle()
+      .then(({ data }) => { if (alive && data) setFreshBarber(data) })
+    return () => { alive = false }
+  }, [sessionBarber?.id])
+  const barber = useMemo(
+    () => sessionBarber ? { ...sessionBarber, ...(freshBarber || {}) } : sessionBarber,
+    [sessionBarber, freshBarber],
+  )
   const [searchParams] = useSearchParams()
   const navigate        = useNavigate()
   const editId          = searchParams.get('edit')
@@ -460,7 +476,7 @@ export default function BarberDraftPage() {
           <button className="flex items-center justify-between w-full" onClick={() => setShowVitrina(v => !v)}>
             <div className="flex items-center gap-2">
               <label className="label mb-0 pointer-events-none">Vitrina</label>
-              {!Object.values(productOverrides).some(o => Number(o.commission_pct) > 0) && (
+              {!products.some(p => productPct(p, barber, productOverrides) > 0) && (
                 <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
                   <Store size={10} /> 100% local
                 </span>
@@ -491,7 +507,7 @@ export default function BarberDraftPage() {
           <button className="flex items-center justify-between w-full" onClick={() => setShowBebidas(v => !v)}>
             <div className="flex items-center gap-2">
               <label className="label mb-0 pointer-events-none">Bebidas</label>
-              {!Object.values(drinkOverrides).some(o => Number(o.commission_pct) > 0) && (
+              {!drinks.some(d => drinkPct(d, barber, drinkOverrides) > 0) && (
                 <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
                   <Store size={10} /> 100% local
                 </span>

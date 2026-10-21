@@ -85,8 +85,9 @@ export function buildServiceItems(sel, services, barber, overrides, key) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Comisiones por barbero en PRODUCTOS de vitrina (barber_products)
 //
-// A diferencia de los servicios, un producto es 100% local por defecto.
-// Sin fila en barber_products → 0% para el barbero. Con fila → ese % puntual.
+// Cada barbero tiene un % general de vitrina (barbers.product_commission_pct,
+// 0 por defecto = 100% local). Sin fila en barber_products → usa ese general,
+// así un producto nuevo hereda el % solo. Con fila → ese % puntual (0 incluido).
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Filas de barber_products → { [product_id]: fila } */
@@ -103,16 +104,16 @@ export function productOverridesByBarber(rows) {
   return out
 }
 
-/** ¿Tiene % propio para ese producto? (si no, es 100% local) */
-export function hasProductCommission(product, overrides) {
-  return Number(overrides?.[product.id]?.commission_pct) > 0
+/** ¿Se lleva algo el barbero por ese producto? (si no, es 100% local) */
+export function hasProductCommission(product, overrides, barber) {
+  return productPct(product, barber, overrides) > 0
 }
 
 /** % que se lleva el barbero por ese producto (0 = todo para el local) */
 export function productPct(product, barber, overrides) {
   if (!barber) return 0
   const own = overrides?.[product.id]?.commission_pct
-  return own != null ? Number(own) : 0
+  return own != null ? Number(own) : Number(barber.product_commission_pct || 0)
 }
 
 /**
@@ -179,8 +180,8 @@ export function groupProductsByPct(saleItems) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Comisiones por barbero en BEBIDAS (barber_drinks)
 //
-// Igual que productos: una bebida es 100% local por defecto.
-// Sin fila en barber_drinks → 0% para el barbero. Con fila → ese % puntual.
+// Igual que productos: sin fila en barber_drinks → % general de bebidas del
+// barbero (barbers.drink_commission_pct, 0 = 100% local). Con fila → ese % puntual.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Filas de barber_drinks → { [drink_id]: fila } */
@@ -197,16 +198,16 @@ export function drinkOverridesByBarber(rows) {
   return out
 }
 
-/** ¿Tiene % propio para esa bebida? (si no, es 100% local) */
-export function hasDrinkCommission(drink, overrides) {
-  return Number(overrides?.[drink.id]?.commission_pct) > 0
+/** ¿Se lleva algo el barbero por esa bebida? (si no, es 100% local) */
+export function hasDrinkCommission(drink, overrides, barber) {
+  return drinkPct(drink, barber, overrides) > 0
 }
 
 /** % que se lleva el barbero por esa bebida (0 = todo para el local) */
 export function drinkPct(drink, barber, overrides) {
   if (!barber) return 0
   const own = overrides?.[drink.id]?.commission_pct
-  return own != null ? Number(own) : 0
+  return own != null ? Number(own) : Number(barber.drink_commission_pct || 0)
 }
 
 /**
