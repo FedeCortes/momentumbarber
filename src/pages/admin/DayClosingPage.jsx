@@ -484,7 +484,8 @@ export default function DayClosingPage() {
                         </>
                       )}
 
-                      <CommissionRows rates={rates} commission={commission} svcs={svcs} barber={barber} />
+                      {/* Sin servicios en el período (solo vitrina/bebidas) no se muestra "comisión sobre $0" */}
+                      {svcs > 0 && <CommissionRows rates={rates} commission={commission} svcs={svcs} barber={barber} />}
                       {tips > 0 && (
                         <div className="flex items-center justify-between px-4 py-2.5 border-b border-dark-400/30">
                           <div className="flex items-center gap-2">
