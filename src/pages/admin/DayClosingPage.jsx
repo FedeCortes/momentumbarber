@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Moon, Share2, Download, Scissors, ShoppingBag, Droplets, ArrowRightLeft, Banknote, Minus, Equal, Percent, Coins, AlertTriangle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { customerStatsForRange } from '../../lib/customers'
 import { useAuth } from '../../context/AuthContext'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -151,6 +153,7 @@ export default function DayClosingPage() {
   const [reloadKey, setReloadKey]       = useState(0)
   const [shared, setShared]             = useState(false)
   const [detail, setDetail]             = useState(null) // { title, sales, showBarber }
+  const [custStats, setCustStats]       = useState(null) // { attended, newIds, customers } | null si no cargó
 
   // Una sola carga con reintento (antes: dos cargas sueltas, sin manejo de error)
   useEffect(() => {
@@ -183,6 +186,17 @@ export default function DayClosingPage() {
   }, [tenant?.id, from, to, reloadKey])
 
   function load() { setReloadKey(k => k + 1) }
+
+  // Clientes atendidos y nuevos del período. Va aparte: si falla, el cierre se ve igual.
+  useEffect(() => {
+    if (!tenant?.id) return
+    let alive = true
+    setCustStats(null)
+    customerStatsForRange(tenant.id, sales, from)
+      .then(r => { if (alive) setCustStats(r) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [tenant?.id, sales, from])
 
   // ── Totales globales ── (incluye recargo: es plata que efectivamente cobró el local al cliente)
   const saleTotal = s => Number(s.total_services || 0) + Number(s.total_products || 0) + Number(s.total_drinks || 0) + Number(s.tip || 0) + Number(s.surcharge_amt || 0)
@@ -292,6 +306,10 @@ export default function DayClosingPage() {
       totalConsumption > 0 ? `   Consumo de barberos: $${fmt(totalConsumption)}` : null,
       totalSurcharge > 0 ? `   Recargo pagos:      $${fmt(totalSurcharge)}` : null,
     )
+
+    if (custStats && custStats.attended.length > 0) {
+      lines.push(``, `👥 CLIENTES: ${custStats.attended.length} con nombre · ${custStats.newIds.size} nuevo${custStats.newIds.size === 1 ? '' : 's'}`)
+    }
 
     return lines.filter(l => l !== null).join('\n')
   }
@@ -441,7 +459,7 @@ export default function DayClosingPage() {
                                 <Percent size={11} className="text-violet-300/70 shrink-0" />
                                 <div className="min-w-0">
                                   <p className="text-cream/60 text-xs">Comisión de vitrina</p>
-                                  <p className="text-cream/25 text-[11px]">% propio en algún producto</p>
+                                  <p className="text-cream/25 text-[11px]">% o monto por producto</p>
                                 </div>
                               </div>
                               <span className="text-cream/70 text-sm shrink-0">${fmt(productCommission)}</span>
@@ -456,7 +474,7 @@ export default function DayClosingPage() {
                                 <Percent size={11} className="text-violet-300/70 shrink-0" />
                                 <div className="min-w-0">
                                   <p className="text-cream/60 text-xs">Comisión de bebidas</p>
-                                  <p className="text-cream/25 text-[11px]">% propio en alguna bebida</p>
+                                  <p className="text-cream/25 text-[11px]">% o monto por bebida</p>
                                 </div>
                               </div>
                               <span className="text-cream/70 text-sm shrink-0">${fmt(drinkCommission)}</span>
@@ -495,6 +513,36 @@ export default function DayClosingPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── CLIENTES ── */}
+          {custStats && (
+            <div>
+              <SectionLabel>Clientes</SectionLabel>
+              <div className="card">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-dark-300/60 rounded-xl px-3 py-2.5">
+                    <p className="text-cream/40 text-[11px] uppercase tracking-wider">Nuevos</p>
+                    <p className="font-display text-3xl text-emerald-400">{custStats.newIds.size}</p>
+                  </div>
+                  <div className="bg-dark-300/60 rounded-xl px-3 py-2.5">
+                    <p className="text-cream/40 text-[11px] uppercase tracking-wider">Atendidos con nombre</p>
+                    <p className="font-display text-3xl text-cream">{custStats.attended.length}</p>
+                  </div>
+                </div>
+                {custStats.newIds.size > 0 && (
+                  <p className="text-cream/50 text-xs mt-3">
+                    Primera vez: {[...custStats.newIds].map(id => custStats.customers[id]?.name || 'Sin nombre').join(', ')}
+                  </p>
+                )}
+                <p className="text-cream/25 text-[11px] mt-3">
+                  {sales.filter(s => !s.customer_id).length > 0
+                    ? `${sales.filter(s => !s.customer_id).length} venta${sales.filter(s => !s.customer_id).length === 1 ? '' : 's'} sin cliente cargado no entra${sales.filter(s => !s.customer_id).length === 1 ? '' : 'n'} en la cuenta. `
+                    : ''}
+                  <Link to="/admin/customers" className="text-gold/70 hover:text-gold">Ver clientes</Link>
+                </p>
               </div>
             </div>
           )}
@@ -556,7 +604,7 @@ export default function DayClosingPage() {
                   <MoneyRow
                     icon={ShoppingBag}
                     label="Vitrina"
-                    sub={productBarberCut > 0 ? `$${fmt(productBarberCut)} pagado a barberos por % propio` : '100% local'}
+                    sub={productBarberCut > 0 ? `$${fmt(productBarberCut)} pagado a barberos en comisiones` : '100% local'}
                     amount={shopFromProducts}
                   />
                 )}
@@ -564,7 +612,7 @@ export default function DayClosingPage() {
                   <MoneyRow
                     icon={Droplets}
                     label="Bebidas"
-                    sub={drinkBarberCut > 0 ? `$${fmt(drinkBarberCut)} pagado a barberos por % propio` : '100% local'}
+                    sub={drinkBarberCut > 0 ? `$${fmt(drinkBarberCut)} pagado a barberos en comisiones` : '100% local'}
                     amount={shopFromDrinks}
                   />
                 )}

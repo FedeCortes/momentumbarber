@@ -5,35 +5,13 @@ import { useAuth } from '../../context/AuthContext'
 import Modal from '../../components/ui/Modal'
 import EmptyState from '../../components/ui/EmptyState'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
-import { productOverridesMap, drinkOverridesMap } from '../../lib/earnings'
 import toast from 'react-hot-toast'
-
-// % general de vitrina o bebidas del barbero: lo hereda todo ítem sin % propio.
-function GeneralPct({ value, onChange }) {
-  return (
-    <div className="flex items-center gap-1.5 shrink-0">
-      <span className="text-cream/40 text-[11px]">General</span>
-      <div className="relative w-20">
-        <input
-          type="number" min="0" max="100" step="0.5"
-          className="input-dark w-full py-1 text-sm pr-6 text-right"
-          placeholder="0"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-        />
-        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-cream/35 text-xs pointer-events-none">%</span>
-      </div>
-    </div>
-  )
-}
 
 function BarberForm({ barber, onSave, onClose }) {
   const { tenant } = useAuth()
   const [form, setForm] = useState({
     name: barber?.name || '',
     commission_pct: barber?.commission_pct || 50,
-    product_commission_pct: barber?.product_commission_pct != null ? String(Number(barber.product_commission_pct)) : '0',
-    drink_commission_pct:   barber?.drink_commission_pct   != null ? String(Number(barber.drink_commission_pct))   : '0',
     password_hash: '',
     is_active: barber?.is_active ?? true,
   })
@@ -44,14 +22,6 @@ function BarberForm({ barber, onSave, onClose }) {
   const [svcCfg, setSvcCfg]     = useState({})
   const [loadingSvcs, setLoadingSvcs] = useState(true)
 
-  // Config de productos: { [product_id]: { pct } } — pct '' = usa el % general de vitrina (sin fila)
-  const [products, setProducts] = useState([])
-  const [prdCfg, setPrdCfg]     = useState({})
-
-  // Config de bebidas: { [drink_id]: { pct } } — pct '' = usa el % general de bebidas (sin fila)
-  const [drinks, setDrinks] = useState([])
-  const [drkCfg, setDrkCfg] = useState({})
-
   useEffect(() => {
     if (!tenant?.id) return
     Promise.all([
@@ -59,15 +29,7 @@ function BarberForm({ barber, onSave, onClose }) {
       barber
         ? supabase.from('barber_services').select('*').eq('barber_id', barber.id)
         : Promise.resolve({ data: [] }),
-      supabase.from('products').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      barber
-        ? supabase.from('barber_products').select('*').eq('barber_id', barber.id)
-        : Promise.resolve({ data: [] }),
-      supabase.from('drinks').select('*').eq('tenant_id', tenant.id).eq('is_active', true).order('name'),
-      barber
-        ? supabase.from('barber_drinks').select('*').eq('barber_id', barber.id)
-        : Promise.resolve({ data: [] }),
-    ]).then(([svcs, cfg, prds, prdCfgRes, drks, drkCfgRes]) => {
+    ]).then(([svcs, cfg]) => {
       const list = svcs.data || []
       const byService = Object.fromEntries((cfg.data || []).map(r => [r.service_id, r]))
       // Por defecto todos los servicios vienen seleccionados y sin % propio
@@ -80,20 +42,6 @@ function BarberForm({ barber, onSave, onClose }) {
       })))
       setServices(list)
       setLoadingSvcs(false)
-
-      const prdList = prds.data || []
-      const byProduct = productOverridesMap(prdCfgRes.data || [])
-      setPrdCfg(Object.fromEntries(prdList.map(p => [p.id, {
-        pct: byProduct[p.id]?.commission_pct != null ? String(Number(byProduct[p.id].commission_pct)) : '',
-      }])))
-      setProducts(prdList)
-
-      const drkList = drks.data || []
-      const byDrink = drinkOverridesMap(drkCfgRes.data || [])
-      setDrkCfg(Object.fromEntries(drkList.map(d => [d.id, {
-        pct: byDrink[d.id]?.commission_pct != null ? String(Number(byDrink[d.id].commission_pct)) : '',
-      }])))
-      setDrinks(drkList)
     })
   }, [tenant?.id, barber?.id])
 
@@ -105,39 +53,19 @@ function BarberForm({ barber, onSave, onClose }) {
     setSvcCfg(prev => Object.fromEntries(Object.entries(prev).map(([id, c]) => [id, { ...c, enabled }])))
   }
 
-  function setPrd(id, patch) {
-    setPrdCfg(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }))
-  }
-
-  function setDrk(id, patch) {
-    setDrkCfg(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }))
-  }
-
   const enabledCount = Object.values(svcCfg).filter(c => c.enabled).length
   const customCount  = Object.values(svcCfg).filter(c => c.enabled && c.pct !== '').length
-  const customPrdCount = Object.values(prdCfg).filter(c => c.pct !== '').length
-  const customDrkCount = Object.values(drkCfg).filter(c => c.pct !== '').length
-  const generalPrd = Number(form.product_commission_pct || 0)
-  const generalDrk = Number(form.drink_commission_pct || 0)
 
   async function handleSave() {
     if (!form.name) return toast.error('El nombre es obligatorio')
     if (form.commission_pct < 0 || form.commission_pct > 100) return toast.error('El porcentaje debe estar entre 0 y 100')
-    const badGeneral = v => Number.isNaN(Number(v || 0)) || Number(v || 0) < 0 || Number(v || 0) > 100
-    if (badGeneral(form.product_commission_pct) || badGeneral(form.drink_commission_pct)) return toast.error('El % general de vitrina y bebidas debe estar entre 0 y 100')
     const invalid = Object.values(svcCfg).some(c => c.pct !== '' && (Number.isNaN(Number(c.pct)) || Number(c.pct) < 0 || Number(c.pct) > 100))
     if (invalid) return toast.error('Los porcentajes por servicio deben estar entre 0 y 100')
-    const invalidPrd = Object.values(prdCfg).some(c => c.pct !== '' && (Number.isNaN(Number(c.pct)) || Number(c.pct) < 0 || Number(c.pct) > 100))
-    if (invalidPrd) return toast.error('Los porcentajes por producto deben estar entre 0 y 100')
-    const invalidDrk = Object.values(drkCfg).some(c => c.pct !== '' && (Number.isNaN(Number(c.pct)) || Number(c.pct) < 0 || Number(c.pct) > 100))
-    if (invalidDrk) return toast.error('Los porcentajes por bebida deben estar entre 0 y 100')
     setLoading(true)
     try {
       const payload = {
         name: form.name,
         commission_pct: Number(form.commission_pct),
-        product_commission_pct: Number(form.product_commission_pct || 0),
-        drink_commission_pct:   Number(form.drink_commission_pct || 0),
         is_active: form.is_active,
         tenant_id: tenant.id,
         ...(form.password_hash ? { password_hash: form.password_hash } : {}),
@@ -170,36 +98,6 @@ function BarberForm({ barber, onSave, onClose }) {
         if (error) throw error
       }
 
-      // Productos: solo se guarda fila cuando tiene % propio (0 incluido). Sin fila = usa el % general de vitrina.
-      const prdRows = Object.entries(prdCfg)
-        .filter(([, c]) => c.pct !== '')
-        .map(([product_id, c]) => ({
-          tenant_id: tenant.id,
-          barber_id: barberId,
-          product_id,
-          commission_pct: Number(c.pct),
-        }))
-
-      const { error: delPrdErr } = await supabase.from('barber_products').delete().eq('barber_id', barberId)
-      if (!delPrdErr && prdRows.length) {
-        await supabase.from('barber_products').insert(prdRows)
-      }
-
-      // Bebidas: mismo criterio que productos — fila solo con % propio; sin fila = % general de bebidas.
-      const drkRows = Object.entries(drkCfg)
-        .filter(([, c]) => c.pct !== '')
-        .map(([drink_id, c]) => ({
-          tenant_id: tenant.id,
-          barber_id: barberId,
-          drink_id,
-          commission_pct: Number(c.pct),
-        }))
-
-      const { error: delDrkErr } = await supabase.from('barber_drinks').delete().eq('barber_id', barberId)
-      if (!delDrkErr && drkRows.length) {
-        await supabase.from('barber_drinks').insert(drkRows)
-      }
-
       toast.success(barber ? 'Barbero actualizado' : 'Barbero creado')
       onSave()
     } catch (e) {
@@ -226,7 +124,7 @@ function BarberForm({ barber, onSave, onClose }) {
           />
           <span className="text-gold font-display text-xl w-14 text-right">{form.commission_pct}%</span>
         </div>
-        <p className="text-cream/30 text-xs mt-1">Propinas: 100% barbero · Vitrina y bebidas: según su % general de abajo</p>
+        <p className="text-cream/30 text-xs mt-1">Propinas: 100% barbero · Vitrina y bebidas: se configuran en Configuración, igual para todos</p>
       </div>
 
       {/* ── Servicios: cuáles le aparecen y con qué % ── */}
@@ -305,99 +203,6 @@ function BarberForm({ barber, onSave, onClose }) {
         )}
       </div>
 
-      {/* ── Productos: % puntual que se lleva de la vitrina (por defecto, 100% local) ── */}
-      {products.length > 0 && (
-        <div>
-          <div className="flex items-end justify-between gap-2 mb-1">
-            <label className="label mb-0">Productos de vitrina</label>
-            <GeneralPct value={form.product_commission_pct} onChange={v => setForm(f => ({ ...f, product_commission_pct: v }))} />
-          </div>
-          <p className="text-cream/30 text-xs mb-2">
-            El % general vale para todos los productos, también los que cargues más adelante. 0 = 100% para el local. Si alguno paga distinto, ponele su % en la lista; vacío = usa el general ({generalPrd}%).
-          </p>
-          <div className="border border-dark-400/60 rounded-xl overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 bg-dark-300/50 border-b border-dark-400/50">
-              <span className="flex-1 text-cream/40 text-[10px] font-bold uppercase tracking-wide">Producto</span>
-              <span className="w-24 text-right text-cream/40 text-[10px] font-bold uppercase tracking-wide">% que cobra</span>
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              {products.map(p => {
-                const cfg = prdCfg[p.id] || { pct: '' }
-                return (
-                  <div key={p.id} className="flex items-center gap-2 px-3 py-2 border-b border-dark-400/25 last:border-0">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-cream/80 text-sm">{p.name}</span>
-                      <span className="text-cream/25 text-xs ml-2">${Number(p.price).toLocaleString('es-AR')}</span>
-                    </div>
-                    <div className="relative w-24 shrink-0">
-                      <input
-                        type="number" min="0" max="100" step="0.5"
-                        className="input-dark w-full py-1 text-sm pr-6 text-right"
-                        placeholder={String(generalPrd)}
-                        value={cfg.pct}
-                        onChange={e => setPrd(p.id, { pct: e.target.value })}
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-cream/35 text-xs pointer-events-none">%</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            {customPrdCount > 0 && (
-              <div className="px-3 py-2 bg-dark-300/30 border-t border-dark-400/40 text-cream/35 text-[11px]">
-                {customPrdCount} producto{customPrdCount === 1 ? '' : 's'} con % propio
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Bebidas: % puntual (por defecto, 100% local) ── */}
-      {drinks.length > 0 && (
-        <div>
-          <div className="flex items-end justify-between gap-2 mb-1">
-            <label className="label mb-0">Bebidas</label>
-            <GeneralPct value={form.drink_commission_pct} onChange={v => setForm(f => ({ ...f, drink_commission_pct: v }))} />
-          </div>
-          <p className="text-cream/30 text-xs mb-2">
-            El % general vale para todas las bebidas, también las que cargues más adelante. 0 = 100% para el local. Si alguna paga distinto, ponele su % en la lista; vacío = usa el general ({generalDrk}%).
-          </p>
-          <div className="border border-dark-400/60 rounded-xl overflow-hidden">
-            <div className="flex items-center gap-2 px-3 py-2 bg-dark-300/50 border-b border-dark-400/50">
-              <span className="flex-1 text-cream/40 text-[10px] font-bold uppercase tracking-wide">Bebida</span>
-              <span className="w-24 text-right text-cream/40 text-[10px] font-bold uppercase tracking-wide">% que cobra</span>
-            </div>
-            <div className="max-h-64 overflow-y-auto">
-              {drinks.map(d => {
-                const cfg = drkCfg[d.id] || { pct: '' }
-                return (
-                  <div key={d.id} className="flex items-center gap-2 px-3 py-2 border-b border-dark-400/25 last:border-0">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-cream/80 text-sm">{d.name}</span>
-                      <span className="text-cream/25 text-xs ml-2">${Number(d.price).toLocaleString('es-AR')}</span>
-                    </div>
-                    <div className="relative w-24 shrink-0">
-                      <input
-                        type="number" min="0" max="100" step="0.5"
-                        className="input-dark w-full py-1 text-sm pr-6 text-right"
-                        placeholder={String(generalDrk)}
-                        value={cfg.pct}
-                        onChange={e => setDrk(d.id, { pct: e.target.value })}
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-cream/35 text-xs pointer-events-none">%</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            {customDrkCount > 0 && (
-              <div className="px-3 py-2 bg-dark-300/30 border-t border-dark-400/40 text-cream/35 text-[11px]">
-                {customDrkCount} bebida{customDrkCount === 1 ? '' : 's'} con % propio
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       <div>
         <label className="label">Contraseña (opcional)</label>

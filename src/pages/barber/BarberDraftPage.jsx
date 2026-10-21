@@ -8,8 +8,8 @@ import { es } from 'date-fns/locale'
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import {
   splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesMap,
-  splitProducts, buildProductItems, productPct, productOverridesMap,
-  splitDrinks, buildDrinkItems, drinkPct, drinkOverridesMap,
+  splitProducts, buildProductItems, productCut, productOverridesMap, productGeneral,
+  splitDrinks, buildDrinkItems, drinkCut, drinkOverridesMap, drinkGeneral,
 } from '../../lib/earnings'
 import { qAll } from '../../lib/query'
 import PhotoLightbox from '../../components/ui/PhotoLightbox'
@@ -146,7 +146,7 @@ function TodayDrafts({ barberId, tenantId, paymentMethods, refreshKey }) {
 }
 
 export default function BarberDraftPage() {
-  const { tenant, barberSession, stockEnabled } = useAuth()
+  const { tenant, barberSession, stockEnabled, tenantConfig } = useAuth()
   const sessionBarber = barberSession?.barber
   // La sesión del barbero se guarda en el celular al entrar: se relee su fila para
   // usar las comisiones vigentes (si el dueño las cambió después, se ven igual).
@@ -155,7 +155,7 @@ export default function BarberDraftPage() {
     if (!sessionBarber?.id) return
     let alive = true
     supabase.from('barbers')
-      .select('id,name,commission_pct,product_commission_pct,drink_commission_pct')
+      .select('id,name,commission_pct')
       .eq('id', sessionBarber.id).maybeSingle()
       .then(({ data }) => { if (alive && data) setFreshBarber(data) })
     return () => { alive = false }
@@ -173,8 +173,11 @@ export default function BarberDraftPage() {
   const [drinks, setDrinks]             = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
   const [overrides, setOverrides]       = useState({})
-  const [productOverrides, setProductOverrides] = useState({})
-  const [drinkOverrides, setDrinkOverrides] = useState({})
+  const [, setProductOverrides] = useState({})
+  const [, setDrinkOverrides] = useState({})
+  // Comisión de vitrina y bebidas: general de la barbería (Configuración), igual para todos
+  const prdGeneral = productGeneral(tenantConfig)
+  const drkGeneral = drinkGeneral(tenantConfig)
   const [catalogReady, setCatalogReady] = useState(false)
 
   const [selServices, setSelServices]   = useState({})
@@ -300,8 +303,8 @@ export default function BarberDraftPage() {
   const totalDrinks   = calcTotal(selDrinks, drinks)
   const tipAmt        = Number(tip) || 0
   const mySplit       = splitServices(selServices, services, barber, overrides)
-  const myProductSplit = splitProducts(selProducts, products, barber, productOverrides)
-  const myDrinkSplit  = splitDrinks(selDrinks, drinks, barber, drinkOverrides)
+  const myProductSplit = splitProducts(selProducts, products, barber, prdGeneral)
+  const myDrinkSplit  = splitDrinks(selDrinks, drinks, barber, drkGeneral)
   const myEarnings    = mySplit.barberAmt + myProductSplit.barberAmt + myDrinkSplit.barberAmt + tipAmt
   const baseTotal     = totalServices + totalProducts + totalDrinks
   const selectedPm    = paymentMethods.find(p => p.id === paymentMethod)
@@ -317,8 +320,8 @@ export default function BarberDraftPage() {
     return [
       // Guarda el % que le corresponde al barbero por cada servicio (y producto/bebida, si tiene)
       ...buildServiceItems(selServices, services, barber, overrides),
-      ...buildProductItems(selProducts, products, barber, productOverrides),
-      ...buildDrinkItems(selDrinks, drinks, barber, drinkOverrides),
+      ...buildProductItems(selProducts, products, barber, prdGeneral),
+      ...buildDrinkItems(selDrinks, drinks, barber, drkGeneral),
     ]
   }
 
@@ -476,7 +479,7 @@ export default function BarberDraftPage() {
           <button className="flex items-center justify-between w-full" onClick={() => setShowVitrina(v => !v)}>
             <div className="flex items-center gap-2">
               <label className="label mb-0 pointer-events-none">Vitrina</label>
-              {!products.some(p => productPct(p, barber, productOverrides) > 0) && (
+              {!products.some(p => productCut(p, barber, prdGeneral)) && (
                 <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
                   <Store size={10} /> 100% local
                 </span>
@@ -492,9 +495,10 @@ export default function BarberDraftPage() {
               <ItemPicker
                 items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} stockOf={stockFn}
                 showPhoto
-                commissionOf={p => productPct(p, barber, productOverrides) > 0
-                  ? { pct: productPct(p, barber, productOverrides), isDefault: false }
-                  : null}
+                commissionOf={p => {
+                  const cut = productCut(p, barber, prdGeneral)
+                  return cut ? { ...cut, isDefault: false } : null
+                }}
               />
             </div>
           )}
@@ -507,7 +511,7 @@ export default function BarberDraftPage() {
           <button className="flex items-center justify-between w-full" onClick={() => setShowBebidas(v => !v)}>
             <div className="flex items-center gap-2">
               <label className="label mb-0 pointer-events-none">Bebidas</label>
-              {!drinks.some(d => drinkPct(d, barber, drinkOverrides) > 0) && (
+              {!drinks.some(d => drinkCut(d, barber, drkGeneral)) && (
                 <span className="flex items-center gap-1 text-[11px] text-emerald-400/80 bg-emerald-400/10 border border-emerald-400/20 rounded-full px-2.5 py-0.5 font-semibold">
                   <Store size={10} /> 100% local
                 </span>
@@ -522,9 +526,10 @@ export default function BarberDraftPage() {
             <div className="mt-2">
               <ItemPicker
                 items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn}
-                commissionOf={d => drinkPct(d, barber, drinkOverrides) > 0
-                  ? { pct: drinkPct(d, barber, drinkOverrides), isDefault: false }
-                  : null}
+                commissionOf={d => {
+                  const cut = drinkCut(d, barber, drkGeneral)
+                  return cut ? { ...cut, isDefault: false } : null
+                }}
               />
             </div>
           )}

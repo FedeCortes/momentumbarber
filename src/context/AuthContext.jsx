@@ -58,11 +58,13 @@ export function AuthProvider({ children }) {
     let active = true
     ;(async () => {
       try {
-        const { data } = await supabase
-          .from('tenant_config')
-          .select('stock_enabled')
-          .eq('tenant_id', tid)
-          .maybeSingle()
+        // Comisión general de vitrina/bebidas: si la migración no corrió todavía,
+        // se vuelve a pedir solo el stock (la app sigue andando igual).
+        const full = 'stock_enabled,product_commission_amt,product_commission_pct,drink_commission_amt,drink_commission_pct'
+        let { data, error } = await supabase.from('tenant_config').select(full).eq('tenant_id', tid).maybeSingle()
+        if (error) {
+          ;({ data } = await supabase.from('tenant_config').select('stock_enabled').eq('tenant_id', tid).maybeSingle())
+        }
         if (active) setTenantConfig(data || null)
       } catch {
         /* stock_enabled puede no existir todavía; se ignora */
@@ -169,11 +171,16 @@ export function AuthProvider({ children }) {
     setTenantConfig(c => ({ ...(c || {}), stock_enabled: !!v }))
   }
 
+  // Lo usa Configuración para reflejar otros ajustes (p. ej. comisión general) sin recargar
+  function patchTenantConfig(patch) {
+    setTenantConfig(c => ({ ...(c || {}), ...patch }))
+  }
+
   return (
     <AuthContext.Provider value={{
       session, profile, tenant, tenantConfig, barberSession,
       loading, isRoot, isAdmin, isBarber, stockEnabled,
-      signIn, signOut, setBarber, clearBarberSession, loadProfile, setStockEnabled,
+      signIn, signOut, setBarber, clearBarberSession, loadProfile, setStockEnabled, patchTenantConfig,
       rememberProfileUnlock, isProfileUnlocked,
     }}>
       {children}

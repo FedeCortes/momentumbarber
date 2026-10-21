@@ -9,8 +9,8 @@ import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePi
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import {
   splitServices, buildServiceItems, groupByPct, servicePct, hasCustomPct, isServiceEnabled, overridesByBarber,
-  splitProducts, buildProductItems, groupProductsByPct, productPct, productOverridesByBarber,
-  splitDrinks, buildDrinkItems, groupDrinksByPct, drinkPct, drinkOverridesByBarber,
+  splitProducts, buildProductItems, groupProductsByPct, productCut, productOverridesByBarber, productGeneral,
+  splitDrinks, buildDrinkItems, groupDrinksByPct, drinkCut, drinkOverridesByBarber, drinkGeneral,
 } from '../../lib/earnings'
 import { applyStockDelta } from '../../lib/stock'
 import { qAll } from '../../lib/query'
@@ -24,14 +24,15 @@ const rowTotal = r => Number(r.total || 0) + Number(r.surcharge_amt || 0)
 // Línea de detalle: muestra con qué % se pagó cada servicio
 function ItemLine({ it, barber }) {
   const pct  = it.commission_pct != null ? Number(it.commission_pct) : null
-  const show = (it.item_type === 'service' && pct != null) || ((it.item_type === 'product' || it.item_type === 'drink') && pct > 0)
+  const amt  = it.commission_amt != null ? Number(it.commission_amt) : null
+  const show = (it.item_type === 'service' && pct != null) || ((it.item_type === 'product' || it.item_type === 'drink') && (pct > 0 || amt > 0))
   return (
     <div className="flex justify-between gap-2 text-sm">
       <span className="text-cream/60 min-w-0">
         {it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
         {show && (
           <span className="ml-1.5 align-middle inline-block">
-            <CommissionBadge pct={pct} size="xs"
+            <CommissionBadge pct={pct} amt={amt} size="xs"
               isDefault={it.item_type === 'service' && pct === Number(barber?.commission_pct)}
               barberName={barber?.name?.split(' ')[0]} />
           </span>
@@ -44,7 +45,7 @@ function ItemLine({ it, barber }) {
 
 // ── Borrador — solo referencia, con copiado a oficial y edición/borrado para admin ──
 function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barberDrks, onChange, showDate, isAdmin, onDelete, compact }) {
-  const { stockEnabled } = useAuth()
+  const { stockEnabled, tenantConfig } = useAuth()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState(null)
   const [working, setWorking] = useState(false)
@@ -180,17 +181,17 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
 
   const editBarberObj = barbers.find(b => b.id === editBarber) || null
   const eOverrides   = editBarberObj ? barberSvcs?.[editBarberObj.id] : null
-  const eProductOverrides = editBarberObj ? barberPrds?.[editBarberObj.id] : null
-  const eDrinkOverrides = editBarberObj ? barberDrks?.[editBarberObj.id] : null
+  const ePrdGeneral = productGeneral(tenantConfig)
+  const eDrkGeneral = drinkGeneral(tenantConfig)
   const eSplit       = splitServices(selServices, catalog.services, editBarberObj, eOverrides)
   const eCommissionOf = s => editBarberObj
     ? { pct: servicePct(s, editBarberObj, eOverrides), isDefault: !hasCustomPct(s, eOverrides), barberName: editBarberObj.name.split(' ')[0] }
     : null
-  const eProductCommissionOf = p => (editBarberObj && productPct(p, editBarberObj, eProductOverrides) > 0)
-    ? { pct: productPct(p, editBarberObj, eProductOverrides), isDefault: false, barberName: editBarberObj.name.split(' ')[0] }
+  const eProductCommissionOf = p => productCut(p, editBarberObj, ePrdGeneral)
+    ? { ...productCut(p, editBarberObj, ePrdGeneral), isDefault: false, barberName: editBarberObj.name.split(' ')[0] }
     : null
-  const eDrinkCommissionOf = d => (editBarberObj && drinkPct(d, editBarberObj, eDrinkOverrides) > 0)
-    ? { pct: drinkPct(d, editBarberObj, eDrinkOverrides), isDefault: false, barberName: editBarberObj.name.split(' ')[0] }
+  const eDrinkCommissionOf = d => drinkCut(d, editBarberObj, eDrkGeneral)
+    ? { ...drinkCut(d, editBarberObj, eDrkGeneral), isDefault: false, barberName: editBarberObj.name.split(' ')[0] }
     : null
   const eTotalSvc    = calcAmt(selServices, catalog.services)
   const eTotalPrd    = calcAmt(selProducts, catalog.products)
@@ -220,8 +221,8 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
 
       const newItems = [
         ...buildServiceItems(selServices, catalog.services, editBarberObj, eOverrides, { draft_id: draft.id }),
-        ...buildProductItems(selProducts, catalog.products, editBarberObj, eProductOverrides, { draft_id: draft.id }),
-        ...buildDrinkItems(selDrinks, catalog.drinks, editBarberObj, eDrinkOverrides, { draft_id: draft.id }),
+        ...buildProductItems(selProducts, catalog.products, editBarberObj, ePrdGeneral, { draft_id: draft.id }),
+        ...buildDrinkItems(selDrinks, catalog.drinks, editBarberObj, eDrkGeneral, { draft_id: draft.id }),
       ]
 
       await supabase.from('draft_items').delete().eq('draft_id', draft.id)
@@ -472,7 +473,7 @@ function EditItemPicker({ items, selected, onToggle, commissionOf }) {
 
 // ── Venta oficial — con edición/borrado para admin ────────────────────────────
 function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, barberDrks, isAdmin, onRefresh, showDate, compact }) {
-  const { stockEnabled } = useAuth()
+  const { stockEnabled, tenantConfig } = useAuth()
   const [open, setOpen]         = useState(false)
   const [items, setItems]       = useState(null)
   const [editOpen, setEditOpen] = useState(false)
@@ -556,19 +557,19 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, barber
 
   const selectedBarber   = barbers.find(b => b.id === editBarber) || null
   const sOverrides       = selectedBarber ? barberSvcs?.[selectedBarber.id] : null
-  const sProductOverrides = selectedBarber ? barberPrds?.[selectedBarber.id] : null
-  const sDrinkOverrides   = selectedBarber ? barberDrks?.[selectedBarber.id] : null
+  const sPrdGeneral = productGeneral(tenantConfig)
+  const sDrkGeneral   = drinkGeneral(tenantConfig)
   const sSplit           = splitServices(selServices, catalog.services, selectedBarber, sOverrides)
-  const sProductSplit    = splitProducts(selProducts, catalog.products, selectedBarber, sProductOverrides)
-  const sDrinkSplit      = splitDrinks(selDrinks, catalog.drinks, selectedBarber, sDrinkOverrides)
+  const sProductSplit    = splitProducts(selProducts, catalog.products, selectedBarber, sPrdGeneral)
+  const sDrinkSplit      = splitDrinks(selDrinks, catalog.drinks, selectedBarber, sDrkGeneral)
   const sCommissionOf    = s => selectedBarber
     ? { pct: servicePct(s, selectedBarber, sOverrides), isDefault: !hasCustomPct(s, sOverrides), barberName: selectedBarber.name.split(' ')[0] }
     : null
-  const sProductCommissionOf = p => (selectedBarber && productPct(p, selectedBarber, sProductOverrides) > 0)
-    ? { pct: productPct(p, selectedBarber, sProductOverrides), isDefault: false, barberName: selectedBarber.name.split(' ')[0] }
+  const sProductCommissionOf = p => productCut(p, selectedBarber, sPrdGeneral)
+    ? { ...productCut(p, selectedBarber, sPrdGeneral), isDefault: false, barberName: selectedBarber.name.split(' ')[0] }
     : null
-  const sDrinkCommissionOf = d => (selectedBarber && drinkPct(d, selectedBarber, sDrinkOverrides) > 0)
-    ? { pct: drinkPct(d, selectedBarber, sDrinkOverrides), isDefault: false, barberName: selectedBarber.name.split(' ')[0] }
+  const sDrinkCommissionOf = d => drinkCut(d, selectedBarber, sDrkGeneral)
+    ? { ...drinkCut(d, selectedBarber, sDrkGeneral), isDefault: false, barberName: selectedBarber.name.split(' ')[0] }
     : null
   const barberEarningsPreview = selectedBarber ? sSplit.barberAmt + sProductSplit.barberAmt + sDrinkSplit.barberAmt + tipAmt : 0
 
@@ -598,8 +599,8 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, barber
 
       const newItems = [
         ...buildServiceItems(selServices, catalog.services, selectedBarber, sOverrides, { sale_id: sale.id }),
-        ...buildProductItems(selProducts, catalog.products, selectedBarber, sProductOverrides, { sale_id: sale.id }),
-        ...buildDrinkItems(selDrinks, catalog.drinks, selectedBarber, sDrinkOverrides, { sale_id: sale.id }),
+        ...buildProductItems(selProducts, catalog.products, selectedBarber, sPrdGeneral, { sale_id: sale.id }),
+        ...buildDrinkItems(selDrinks, catalog.drinks, selectedBarber, sDrkGeneral, { sale_id: sale.id }),
       ]
 
       // Ajuste de stock: repongo lo viejo y descuento lo nuevo (efecto neto = diferencia)

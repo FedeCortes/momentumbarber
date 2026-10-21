@@ -14,14 +14,15 @@ import toast from 'react-hot-toast'
 // Línea de ítem — muestra con qué % se paga cada servicio
 function ItemLine({ it, barberPct }) {
   const pct  = it.commission_pct != null ? Number(it.commission_pct) : null
-  const show = (it.item_type === 'service' && pct != null) || (it.item_type === 'product' && pct > 0)
+  const amt  = it.commission_amt != null ? Number(it.commission_amt) : null
+  const show = (it.item_type === 'service' && pct != null) || ((it.item_type === 'product' || it.item_type === 'drink') && (pct > 0 || amt > 0))
   return (
     <div className="flex justify-between items-center gap-2">
       <span className="text-cream/60 text-sm min-w-0">
         {it.name}{it.quantity > 1 ? ` ×${it.quantity}` : ''}
         {show && (
           <span className="ml-1.5 align-middle inline-block">
-            <CommissionBadge pct={pct} variant="barber" size="xs" isDefault={it.item_type === 'service' && pct === Number(barberPct)} />
+            <CommissionBadge pct={pct} amt={amt} variant="barber" size="xs" isDefault={it.item_type === 'service' && pct === Number(barberPct)} />
           </span>
         )}
       </span>

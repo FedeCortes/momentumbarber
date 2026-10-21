@@ -213,7 +213,7 @@ export default function ManualPage({ compact = false }) {
           <StepList>
             <Step n={1}>Ves solo los <b>servicios habilitados</b> para vos. ¿Falta uno? Pedíselo al administrador.</Step>
             <Step n={2}>Sumás con <b>+</b>, restás con <b>−</b>. Comisión distinta a la general = etiqueta violeta.</Step>
-            <Step n={3}><b>Vitrina</b> y <b>Bebidas</b>: 100% para el local, salvo que el administrador te haya dado un %. Si tenés, el producto lo muestra.</Step>
+            <Step n={3}><b>Vitrina</b> y <b>Bebidas</b>: si dejan comisión, el producto te muestra cuánto te llevás ($ o %). Si no dice nada, es 100% para el local.</Step>
             <Step n={4}><b>Propina</b>: 100% tuya. Elegís método de pago y confirmás.</Step>
           </StepList>
           <Callout warn><b>No es una venta oficial.</b> Solo lo que carga el administrador cuenta como oficial — él lo revisa en Registros. Cargá justo lo que cobraste.</Callout>
@@ -245,7 +245,7 @@ export default function ManualPage({ compact = false }) {
           <StepList>
             <Step n={1}><b>¿Quién lo atendió?</b> El barbero, o «Solo local» (100% para el local).</Step>
             <Step n={2}><b>Servicios:</b> solo los habilitados para ese barbero, con el reparto ya calculado.</Step>
-            <Step n={3}><b>Vitrina y Bebidas</b> (100% local, salvo que el barbero tenga un % de vitrina o bebidas), propina y método de pago (recargo automático). Con el stock activo se ve cuántas quedan y no te deja vender sin stock.</Step>
+            <Step n={3}><b>Vitrina y Bebidas</b> (cada producto muestra la comisión del barbero si tiene; si no, 100% local), propina y método de pago (recargo automático). Con el stock activo se ve cuántas quedan y no te deja vender sin stock.</Step>
             <Step n={4}>Confirmás y queda como venta oficial, la que cuenta para el Cierre <i>(y la que descuenta stock)</i>.</Step>
           </StepList>
           <p className="text-cream/60 text-sm leading-relaxed mt-1">
@@ -378,7 +378,7 @@ export default function ManualPage({ compact = false }) {
               <p className="text-cream/60 text-sm leading-relaxed">Preguntale al administrador — él lo revisa en Registros. Vos, en Mis registros, siempre ves tu propio cálculo.</p>
             </Row>
             <Row title="¿Por qué la vitrina y las bebidas no me dejan comisión?">
-              <p className="text-cream/60 text-sm leading-relaxed">Van 100% al local, salvo que el administrador te asigne un % de vitrina o bebidas. Distinto es el precio de barbero, que se descuenta en el Cierre si compraste algo para vos.</p>
+              <p className="text-cream/60 text-sm leading-relaxed">Solo dejan comisión si el administrador la configuró: en ese caso el producto te muestra cuánto te llevás. Distinto es el precio de barbero, que se descuenta en el Cierre si compraste algo para vos.</p>
             </Row>
             <Row title="Un producto dice «Sin stock», ¿qué hago?">
               <p className="text-cream/60 text-sm leading-relaxed">No lo podés cargar hasta que el administrador reponga: avisale. El número de «quedan» lo maneja él desde Configuración.</p>
@@ -388,7 +388,7 @@ export default function ManualPage({ compact = false }) {
           <>
             <Row title="¿Por qué la vitrina y las bebidas no le dejan comisión al barbero?">
               <p className="text-cream/60 text-sm leading-relaxed">
-                Por defecto van 100% al local. Si querés darle comisión, en Barberos → editar ponele un <b>% general</b> de vitrina y otro de bebidas: vale para todos los productos, también los nuevos, y podés cambiar alguno suelto. Distinto es el <b>precio de barbero</b>: lo que paga si compra para sí mismo, eso sí se descuenta en el Cierre.
+                Por defecto van 100% al local. Para darle comisión andá a <b>Configuración → Productos de vitrina</b> (o Bebidas): arriba ponés la <b>comisión general</b> en $ o %, que vale para todos los productos, también los nuevos; y si alguno paga distinto, le ponés su propia comisión al editarlo. Es igual para todos los barberos. Distinto es el <b>precio de barbero</b>: lo que paga si compra para sí mismo, eso sí se descuenta en el Cierre.
               </p>
             </Row>
             <Row title="Un barbero cargó algo distinto a la venta real, ¿qué hago?">

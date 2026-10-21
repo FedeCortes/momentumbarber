@@ -378,6 +378,33 @@ create policy "config_tenant"   on public.tenant_config for all using (tenant_id
 -- ============================================================
 
 -- ============================================================
+-- % GENERAL DE VITRINA Y BEBIDAS POR BARBERO
+-- DDL: supabase_migration_general_showcase_commission.sql
+--   · barbers + product_commission_pct, drink_commission_pct (0 = 100% local).
+--     Sin fila en barber_products/barber_drinks → usa este general.
+-- ============================================================
+
+-- ============================================================
+-- COMISIÓN DEL BARBERO EN VITRINA Y BEBIDAS ($ o %)
+-- DDL: supabase_migration_commission_amount.sql — reemplaza a la comisión por
+-- barbero en productos (barber_products / barber_drinks y el % general de
+-- vitrina del barbero, que quedan sin uso).
+--   · tenant_config + product/drink_commission_amt/pct: general de la barbería
+--   · products / drinks + barber_commission_amt/pct: propia del ítem (pisa la
+--     general; 0 = no deja). Igual para todos los barberos. $ = por unidad.
+--   · sale_items / draft_items + commission_amt (monto aplicado, congelado)
+-- ============================================================
+
+-- ============================================================
+-- CLIENTES
+-- DDL: supabase_migration_customers.sql
+--   · customers (name, phone opcional, phone_key normalizado y único por
+--     barbería cuando hay celular); RLS root + tenant
+--   · sales + customer_id (opcional). Cliente nuevo en un período = su
+--     primera venta cae dentro del período.
+-- ============================================================
+
+-- ============================================================
 -- DATOS SEMILLA — servicios y métodos de pago por defecto
 -- (se insertan al crear un tenant desde el código de la app)
 -- ============================================================

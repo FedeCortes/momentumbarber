@@ -7,13 +7,14 @@ import { useAuth } from '../../context/AuthContext'
 import CommissionBadge from '../../components/ui/CommissionBadge'
 import {
   splitServices, buildServiceItems, servicePct, hasCustomPct, enabledServices, overridesByBarber,
-  splitProducts, buildProductItems, productPct, productOverridesByBarber,
-  splitDrinks, buildDrinkItems, drinkPct, drinkOverridesByBarber,
+  splitProducts, buildProductItems, productCut, productOverridesByBarber, productGeneral,
+  splitDrinks, buildDrinkItems, drinkCut, drinkOverridesByBarber, drinkGeneral,
 } from '../../lib/earnings'
 import { applyStockDelta, checkStock } from '../../lib/stock'
 import { qAll } from '../../lib/query'
 import PhotoLightbox from '../../components/ui/PhotoLightbox'
 import toast from 'react-hot-toast'
+import CustomerPicker from '../../components/ui/CustomerPicker'
 
 const todayStr = () => format(new Date(), 'yyyy-MM-dd')
 const dayLabel = (d) => format(new Date(d + 'T12:00:00'), "EEEE d 'de' MMMM", { locale: es })
@@ -142,7 +143,7 @@ function ShopBadge() {
 }
 
 export default function SalesPage() {
-  const { tenant, stockEnabled } = useAuth()
+  const { tenant, stockEnabled, tenantConfig } = useAuth()
   const [tab, setTab] = useState('venta') // 'venta' | 'consumo'
   const [barbers, setBarbers] = useState([])
   const [services, setServices] = useState([])
@@ -168,6 +169,7 @@ export default function SalesPage() {
   const [showVitrina, setShowVitrina] = useState(false)
   const [showBebidas, setShowBebidas] = useState(false)
   const [saleDate, setSaleDate] = useState('') // '' = hoy
+  const [customer, setCustomer] = useState(null) // opcional
   const [savedDate, setSavedDate] = useState('')
 
   // ── Consumo de barbero (compra personal, a precio especial) ──
@@ -261,14 +263,15 @@ export default function SalesPage() {
   const hasShopItems = Object.keys(selProducts).length > 0 || Object.keys(selDrinks).length > 0
   const barber       = barbers.find(b => b.id === selectedBarber) || null
   const overrides    = barber ? barberSvcs[barber.id] : null
-  const productOverrides = barber ? barberPrds[barber.id] : null
-  const drinkOverrides = barber ? barberDrks[barber.id] : null
+  // Comisión de vitrina y bebidas: general de la barbería (Configuración), igual para todos
+  const prdGeneral = productGeneral(tenantConfig)
+  const drkGeneral = drinkGeneral(tenantConfig)
   const chosen       = !!barber || shopOnly
   // Al barbero solo le aparecen los servicios que tiene habilitados
   const visibleServices = barber ? enabledServices(services, overrides) : services
   const split        = splitServices(selServices, services, barber, overrides)
-  const productSplit = splitProducts(selProducts, products, barber, productOverrides)
-  const drinkSplit    = splitDrinks(selDrinks, drinks, barber, drinkOverrides)
+  const productSplit = splitProducts(selProducts, products, barber, prdGeneral)
+  const drinkSplit    = splitDrinks(selDrinks, drinks, barber, drkGeneral)
   const totalServices = calcTotal(selServices, services)
   const totalProducts = calcTotal(selProducts, products)
   const totalDrinks   = calcTotal(selDrinks, drinks)
@@ -355,8 +358,8 @@ export default function SalesPage() {
 
       const items = [
         ...buildServiceItems(selServices, services, barber, overrides),
-        ...buildProductItems(selProducts, products, barber, productOverrides),
-        ...buildDrinkItems(selDrinks, drinks, barber, drinkOverrides),
+        ...buildProductItems(selProducts, products, barber, prdGeneral),
+        ...buildDrinkItems(selDrinks, drinks, barber, drkGeneral),
       ]
 
       if (stockEnabled) {
@@ -376,6 +379,8 @@ export default function SalesPage() {
         shop_earnings: shopEarnings,
         surcharge_amt: surchargeAmt,
         sale_date: date,
+        // Solo se manda si se eligió cliente: sin cliente, la venta queda igual que siempre
+        ...(customer ? { customer_id: customer.id } : {}),
       }).select().single()
       if (error) throw error
       if (items.length) await supabase.from('sale_items').insert(items.map(i => ({ ...i, sale_id: sale.id })))
@@ -386,7 +391,7 @@ export default function SalesPage() {
       setSaved(true)
       setTimeout(() => {
         setSelServices({}); setSelProducts({}); setSelDrinks({})
-        setPaymentMethod(''); setTip(''); setSelectedBarber(''); setShopOnly(false); setSaleDate('')
+        setPaymentMethod(''); setTip(''); setSelectedBarber(''); setShopOnly(false); setSaleDate(''); setCustomer(null)
         setSaved(false)
       }, 1200)
     } catch (e) {
@@ -552,6 +557,12 @@ export default function SalesPage() {
         )}
       </div>
 
+      {/* ── Cliente (opcional) — sirve para la lista de clientes y contar los nuevos ── */}
+      <div className="card mb-3">
+        <label className="label">Cliente <span className="text-cream/30 normal-case font-normal">(opcional)</span></label>
+        <CustomerPicker tenantId={tenant?.id} value={customer} onChange={setCustomer} />
+      </div>
+
       {/* ── 2. Servicios ── */}
       <div className="card mb-3">
         {/* Header de sección */}
@@ -592,7 +603,7 @@ export default function SalesPage() {
                     <div key={`p-${l.product.id}`} className="flex items-center justify-between gap-2 text-xs">
                       <span className="text-cream/50 truncate">{l.product.name}{l.qty > 1 ? ` ×${l.qty}` : ''}</span>
                       <span className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-violet-300 font-semibold">{l.pct}%</span>
+                        <span className="text-violet-300 font-semibold">{l.amt != null ? `$${l.amt.toLocaleString('es-AR')} c/u` : `${l.pct}%`}</span>
                         <span className="text-gold/80">${l.forBarber.toLocaleString('es-AR')}</span>
                       </span>
                     </div>
@@ -601,7 +612,7 @@ export default function SalesPage() {
                     <div key={`d-${l.drink.id}`} className="flex items-center justify-between gap-2 text-xs">
                       <span className="text-cream/50 truncate">{l.drink.name}{l.qty > 1 ? ` ×${l.qty}` : ''}</span>
                       <span className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-violet-300 font-semibold">{l.pct}%</span>
+                        <span className="text-violet-300 font-semibold">{l.amt != null ? `$${l.amt.toLocaleString('es-AR')} c/u` : `${l.pct}%`}</span>
                         <span className="text-gold/80">${l.forBarber.toLocaleString('es-AR')}</span>
                       </span>
                     </div>
@@ -648,9 +659,10 @@ export default function SalesPage() {
             <ItemPicker
               items={products} selected={selProducts} onToggle={(item, d) => toggle(setSelProducts, item, d)} stockOf={stockFn}
               showPhoto
-              commissionOf={p => (barber && productPct(p, barber, productOverrides) > 0)
-                ? { pct: productPct(p, barber, productOverrides), isDefault: false, barberName: barber.name.split(' ')[0] }
-                : null}
+              commissionOf={p => {
+                const cut = productCut(p, barber, prdGeneral)
+                return cut ? { ...cut, isDefault: false, barberName: barber.name.split(' ')[0] } : null
+              }}
             />
           </div>
         )}
@@ -672,9 +684,10 @@ export default function SalesPage() {
           <div className="mt-3">
             <ItemPicker
               items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn}
-              commissionOf={d => (barber && drinkPct(d, barber, drinkOverrides) > 0)
-                ? { pct: drinkPct(d, barber, drinkOverrides), isDefault: false, barberName: barber.name.split(' ')[0] }
-                : null}
+              commissionOf={d => {
+                const cut = drinkCut(d, barber, drkGeneral)
+                return cut ? { ...cut, isDefault: false, barberName: barber.name.split(' ')[0] } : null
+              }}
             />
           </div>
         )}

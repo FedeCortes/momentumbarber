@@ -7,6 +7,7 @@ import { uploadCatalogPhoto, removeCatalogPhoto } from '../../lib/photo'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
+import { productGeneral, drinkGeneral, catalogCut, cutLabel, hasOwnCommission } from '../../lib/earnings'
 
 // Miniatura de foto de un ítem del catálogo (producto), 56px. Tocarla abre
 // un modal con la foto grande y ahí se cambia o se quita.
@@ -165,18 +166,114 @@ function StockControl({ item, tableName, onChange }) {
   )
 }
 
-function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false, showPhoto = false }) {
+// Valor + selector $ / % para la comisión del barbero
+function CommissionInput({ value, type, onChange, onKeyDown, placeholder = '—', compact }) {
+  return (
+    <div className="flex items-stretch gap-1">
+      <input
+        type="number" min="0" step={type === 'pct' ? '0.5' : '1'}
+        className={`input-dark w-full min-w-0 !px-2.5 ${compact ? 'py-1.5 text-sm' : ''}`}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value, type)}
+        onKeyDown={onKeyDown}
+      />
+      <div className="flex rounded-lg border border-dark-400 overflow-hidden shrink-0">
+        {[['amt', '$'], ['pct', '%']].map(([t, l]) => (
+          <button key={t} type="button" onClick={() => onChange(value, t)}
+            className={`px-2.5 text-sm font-semibold transition-colors ${type === t ? 'bg-gold/20 text-gold' : 'text-cream/40 hover:text-cream/70'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Valor del formulario → columnas. '' = sin comisión propia (usa la general)
+function commissionColumns(value, type) {
+  if (value === '' || value == null) return { barber_commission_amt: null, barber_commission_pct: null }
+  const n = Number(value)
+  return type === 'pct'
+    ? { barber_commission_amt: null, barber_commission_pct: n }
+    : { barber_commission_amt: n, barber_commission_pct: null }
+}
+
+function commissionInvalid(value, type) {
+  if (value === '' || value == null) return false
+  const n = Number(value)
+  return Number.isNaN(n) || n < 0 || (type === 'pct' && n > 100)
+}
+
+// Comisión general de la sección (vitrina o bebidas): la usan todos los ítems
+// sin comisión propia, también los que se creen después.
+function GeneralCommission({ kind, tenantId }) {
+  const { tenantConfig, patchTenantConfig } = useAuth()
+  const amtKey = `${kind}_commission_amt`
+  const pctKey = `${kind}_commission_pct`
+  const curAmt = tenantConfig?.[amtKey]
+  const curPct = tenantConfig?.[pctKey]
+  const initType  = curPct != null && curAmt == null ? 'pct' : 'amt'
+  const initValue = curAmt != null ? String(Number(curAmt)) : curPct != null ? String(Number(curPct)) : ''
+  const [value, setValue] = useState(initValue)
+  const [type, setType]   = useState(initType)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { setValue(initValue); setType(initType) }, [initValue, initType])
+
+  const dirty = value !== initValue || (value !== '' && type !== initType)
+
+  async function save() {
+    if (commissionInvalid(value, type)) return toast.error(type === 'pct' ? 'El % debe estar entre 0 y 100' : 'Monto inválido')
+    const n = value === '' ? null : Number(value)
+    const patch = { [amtKey]: type === 'amt' ? n : null, [pctKey]: type === 'pct' ? n : null }
+    setSaving(true)
+    const { error } = await supabase.from('tenant_config')
+      .update({ ...patch, updated_at: new Date().toISOString() }).eq('tenant_id', tenantId)
+    setSaving(false)
+    if (error) return toast.error('No se pudo guardar. ¿Corriste la migración de comisiones en Supabase?')
+    patchTenantConfig(patch)
+    toast.success('Comisión general guardada')
+  }
+
+  return (
+    <div className="rounded-xl border border-gold/25 bg-gold/[0.04] p-3 mb-4">
+      <p className="text-cream/80 text-sm font-medium">Comisión para el barbero</p>
+      <p className="text-cream/40 text-xs mt-0.5 mb-2.5 leading-relaxed">
+        Lo que se lleva el barbero que lo vende, igual para todos. Se aplica a {kind === 'product' ? 'todos los productos' : 'todas las bebidas'} sin comisión propia,
+        también a {kind === 'product' ? 'los nuevos' : 'las nuevas'}. En $ es por unidad. Vacío = todo para el local.
+      </p>
+      <div className="flex gap-2">
+        <div className="flex-1 min-w-0">
+          <CommissionInput value={value} type={type} onChange={(v, t) => { setValue(v); setType(t) }}
+            onKeyDown={e => e.key === 'Enter' && dirty && save()} placeholder="Sin comisión" />
+        </div>
+        <button onClick={save} disabled={saving || !dirty} className="btn-gold px-4 shrink-0 text-sm disabled:opacity-40">
+          {saving ? '...' : 'Guardar'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarberPrice = false, showStock = false, showPhoto = false, showCommission = false }) {
   const [items, setItems] = useState([])
   const [quickName, setQuickName] = useState('')
   const [quickPrice, setQuickPrice] = useState('')
   const [quickBarberPrice, setQuickBarberPrice] = useState('')
   const [quickStock, setQuickStock] = useState('')
+  const [quickCommission, setQuickCommission] = useState('')
+  const [quickCommType, setQuickCommType] = useState('amt')
   const [adding, setAdding] = useState(false)
   const [editId, setEditId] = useState(null)
   const [editName, setEditName] = useState('')
   const [editPrice, setEditPrice] = useState('')
   const [editBarberPrice, setEditBarberPrice] = useState('')
   const [editMinStock, setEditMinStock] = useState('')
+  const [editCommission, setEditCommission] = useState('')
+  const [editCommType, setEditCommType] = useState('amt')
+  const { tenantConfig } = useAuth()
+  const general = tableName === 'drinks' ? drinkGeneral(tenantConfig) : productGeneral(tenantConfig)
+  const generalCut = catalogCut({}, {}, general)
   const [deleteId, setDeleteId] = useState(null)
   const nameRef = useRef(null)
   const priceRef = useRef(null)
@@ -190,6 +287,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
 
   async function quickAdd() {
     if (!quickName.trim()) return
+    if (showCommission && commissionInvalid(quickCommission, quickCommType)) return toast.error('Comisión inválida (el % va de 0 a 100)')
     setAdding(true)
     const payload = {
       name: quickName.trim(),
@@ -197,6 +295,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       ...(showPrice ? { price: Number(quickPrice) || 0 } : {}),
       ...(showBarberPrice ? { barber_price: quickBarberPrice === '' ? null : Number(quickBarberPrice) } : {}),
       ...(showStock ? { stock: Number(quickStock) || 0 } : {}),
+      ...(showCommission && quickCommission !== '' ? commissionColumns(quickCommission, quickCommType) : {}),
     }
     const { error } = await supabase.from(tableName).insert(payload)
     setAdding(false)
@@ -205,6 +304,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
     setQuickPrice('')
     setQuickBarberPrice('')
     setQuickStock('')
+    setQuickCommission('')
     nameRef.current?.focus()
     load()
   }
@@ -219,17 +319,24 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
     setEditPrice(item.price ?? '')
     setEditBarberPrice(item.barber_price ?? '')
     setEditMinStock(item.min_stock ?? '')
+    setEditCommission(item.barber_commission_amt != null ? String(Number(item.barber_commission_amt))
+      : item.barber_commission_pct != null ? String(Number(item.barber_commission_pct)) : '')
+    setEditCommType(item.barber_commission_pct != null && item.barber_commission_amt == null ? 'pct' : 'amt')
   }
 
   async function saveEdit(item) {
     if (!editName.trim()) return
+    if (showCommission && commissionInvalid(editCommission, editCommType)) return toast.error('Comisión inválida (el % va de 0 a 100)')
     const payload = {
       name: editName.trim(),
       ...(showPrice ? { price: Number(editPrice) || 0 } : {}),
       ...(showBarberPrice ? { barber_price: editBarberPrice === '' ? null : Number(editBarberPrice) } : {}),
       ...(showStock ? { min_stock: Number(editMinStock) || 0 } : {}),
+      // Vacío = sin comisión propia (usa la general) · 0 = este ítem no deja comisión
+      ...(showCommission ? commissionColumns(editCommission, editCommType) : {}),
     }
-    await supabase.from(tableName).update(payload).eq('id', item.id)
+    const { error } = await supabase.from(tableName).update(payload).eq('id', item.id)
+    if (error) return toast.error(error.message)
     setEditId(null)
     load()
   }
@@ -244,6 +351,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
   return (
     <div className="card mb-4">
       <h3 className="font-display text-lg text-cream mb-4">{title}</h3>
+      {showCommission && <GeneralCommission kind={tableName === 'drinks' ? 'drink' : 'product'} tenantId={tenantId} />}
 
       {/* Carga rápida */}
       <div className="rounded-xl border border-dark-400/50 bg-dark-300/25 p-3 mb-4">
@@ -276,7 +384,7 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
             <Plus size={16} />
           </button>
         </div>
-        {(showBarberPrice || showStock) && (
+        {(showBarberPrice || showStock || showCommission) && (
           <div className="grid grid-cols-2 gap-2 mt-3">
             {showBarberPrice && (
               <div>
@@ -289,6 +397,14 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                   onChange={e => setQuickBarberPrice(e.target.value)}
                   onKeyDown={handleKeyDown}
                 />
+              </div>
+            )}
+            {showCommission && (
+              <div>
+                <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1 truncate">Comisión barbero</span>
+                <CommissionInput value={quickCommission} type={quickCommType}
+                  onChange={(v, t) => { setQuickCommission(v); setQuickCommType(t) }}
+                  onKeyDown={handleKeyDown} placeholder={generalCut ? 'General' : '—'} />
               </div>
             )}
             {showStock && (
@@ -309,6 +425,11 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
       </div>
       {showBarberPrice && (
         <p className="text-cream/30 text-xs -mt-3 mb-4">Precio barbero: lo que paga un barbero por consumo propio. Vacío = usa el precio normal.</p>
+      )}
+      {showCommission && (
+        <p className={`text-cream/30 text-xs mb-4 ${showBarberPrice ? '-mt-2' : '-mt-3'}`}>
+          Comisión barbero: solo si este ítem paga distinto a la general{generalCut ? ` (${cutLabel(generalCut)})` : ''}. En $ o en %. Vacío = usa la general · 0 = no deja comisión.
+        </p>
       )}
       {showStock && (
         <p className={`text-cream/30 text-xs mb-4 ${showBarberPrice ? '' : '-mt-3'}`}>
@@ -347,10 +468,10 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                       <X size={16} />
                     </button>
                   </div>
-                  {(showPrice || showBarberPrice || showStock) && (
+                  {(showPrice || showBarberPrice || showStock || showCommission) && (
                     <div className={`grid gap-2 ${showPhoto ? 'pl-[68px]' : ''} ${
-                      { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-2 sm:grid-cols-3' }[
-                        [showPrice, showBarberPrice, showStock].filter(Boolean).length
+                      { 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-2 sm:grid-cols-3', 4: 'grid-cols-2 sm:grid-cols-4' }[
+                        [showPrice, showBarberPrice, showStock, showCommission].filter(Boolean).length
                       ] || 'grid-cols-1'
                     }`}>
                       {showPrice && (
@@ -376,6 +497,15 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                             onChange={e => setEditBarberPrice(e.target.value)}
                             onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
                           />
+                        </div>
+                      )}
+                      {showCommission && (
+                        <div>
+                          <span className="text-cream/35 text-[10px] uppercase tracking-wide block mb-1 truncate">Comisión barbero</span>
+                          <CommissionInput compact value={editCommission} type={editCommType}
+                            onChange={(v, t) => { setEditCommission(v); setEditCommType(t) }}
+                            onKeyDown={e => e.key === 'Enter' && saveEdit(item)}
+                            placeholder={generalCut ? 'General' : '—'} />
                         </div>
                       )}
                       {showStock && (
@@ -404,6 +534,15 @@ function CatalogSection({ title, tableName, tenantId, showPrice = true, showBarb
                         Precio barbero: ${Number(item.barber_price ?? item.price).toLocaleString('es-AR')}
                       </p>
                     )}
+                    {showCommission && (hasOwnCommission(item) ? (
+                      <p className="text-emerald-400/80 text-xs mt-0.5 truncate">
+                        Comisión barbero: {catalogCut(item, {}, general) ? cutLabel(catalogCut(item, {}, general)) : 'no deja (0)'}
+                      </p>
+                    ) : generalCut && (
+                      <p className="text-cream/35 text-xs mt-0.5 truncate">
+                        Comisión barbero: general ({cutLabel(generalCut)})
+                      </p>
+                    ))}
                   </div>
                   {showPrice && (
                     <span className="text-gold text-sm font-semibold shrink-0">
@@ -649,8 +788,8 @@ export default function ConfigPage() {
       </div>
 
       <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
-      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} showPhoto />
-      <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice showBarberPrice showStock={stockEnabled} />
+      <CatalogSection title="Productos de vitrina" tableName="products" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} showPhoto />
+      <CatalogSection title="Bebidas" tableName="drinks" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} />
       <CatalogSection title="Pagadores" tableName="expense_payers" tenantId={tenant.id} showPrice={false} />
       <PaymentMethodSection tenantId={tenant.id} />
 
