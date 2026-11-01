@@ -369,6 +369,13 @@ create policy "config_tenant"   on public.tenant_config for all using (tenant_id
 -- ============================================================
 
 -- ============================================================
+-- FOTOS DE BEBIDAS
+-- El DDL completo vive en supabase_migration_drinks_photo.sql.
+-- Resumen:
+--   · drinks          + image_url (mismo bucket 'catalog-photos', carpeta drinks/)
+-- ============================================================
+
+-- ============================================================
 -- COMISIÓN POR BARBERO EN BEBIDAS
 -- El DDL completo vive en supabase_migration_drinks_commission.sql.
 -- Resumen:

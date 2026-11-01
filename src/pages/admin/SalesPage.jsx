@@ -502,7 +502,7 @@ export default function SalesPage() {
                 <span className="text-violet-300 text-sm">${calcTotal(consDrinks, barberDrinks).toLocaleString('es-AR')}</span>
               )}
             </div>
-            <ItemPicker items={barberDrinks} selected={consDrinks} onToggle={(item, d) => toggle(setConsDrinks, item, d)} stockOf={stockFn} />
+            <ItemPicker items={barberDrinks} selected={consDrinks} onToggle={(item, d) => toggle(setConsDrinks, item, d)} stockOf={stockFn} showPhoto />
           </div>
 
           <div className="fixed bottom-[calc(4.5rem_+_env(safe-area-inset-bottom,0px))] left-0 right-0 z-40 md:relative md:bottom-auto md:z-auto bg-dark-200 border-t border-dark-300 md:border md:rounded-xl p-3 sm:p-4 md:card">
@@ -684,6 +684,7 @@ export default function SalesPage() {
           <div className="mt-3">
             <ItemPicker
               items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn}
+              showPhoto
               commissionOf={d => {
                 const cut = drinkCut(d, barber, drkGeneral)
                 return cut ? { ...cut, isDefault: false, barberName: barber.name.split(' ')[0] } : null

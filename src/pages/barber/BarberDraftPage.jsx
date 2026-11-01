@@ -526,6 +526,7 @@ export default function BarberDraftPage() {
             <div className="mt-2">
               <ItemPicker
                 items={drinks} selected={selDrinks} onToggle={(item, d) => toggle(setSelDrinks, item, d)} stockOf={stockFn}
+                showPhoto
                 commissionOf={d => {
                   const cut = drinkCut(d, barber, drkGeneral)
                   return cut ? { ...cut, isDefault: false } : null

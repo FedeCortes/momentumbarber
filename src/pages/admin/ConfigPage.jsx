@@ -9,7 +9,7 @@ import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
 import { productGeneral, drinkGeneral, catalogCut, cutLabel, hasOwnCommission } from '../../lib/earnings'
 
-// Miniatura de foto de un ítem del catálogo (producto), 56px. Tocarla abre
+// Miniatura de foto de un ítem del catálogo (producto o bebida), 56px. Tocarla abre
 // un modal con la foto grande y ahí se cambia o se quita.
 function ItemPhoto({ item, tableName, tenantId, onChange }) {
   const fileRef = useRef(null)
@@ -932,7 +932,7 @@ export default function ConfigPage() {
 
       <CatalogSection title="Servicios" tableName="services" tenantId={tenant.id} showPrice />
       <CatalogSection title="Productos de vitrina" tableName="products" singular="producto" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} showPhoto />
-      <CatalogSection title="Bebidas" tableName="drinks" singular="bebida" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} />
+      <CatalogSection title="Bebidas" tableName="drinks" singular="bebida" tenantId={tenant.id} showPrice showBarberPrice showCommission showStock={stockEnabled} showPhoto />
       <CatalogSection title="Pagadores" tableName="expense_payers" tenantId={tenant.id} showPrice={false} />
       <PaymentMethodSection tenantId={tenant.id} />
 
