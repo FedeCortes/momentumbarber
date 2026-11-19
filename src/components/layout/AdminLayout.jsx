@@ -2,7 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Settings, ShoppingBag,
   FileText, Moon, BarChart2, LogOut, ReceiptText,
-  ChevronDown, Sun, MoreHorizontal, HelpCircle, Contact
+  ChevronDown, Sun, MoreHorizontal, HelpCircle, Contact, CalendarCheck
 } from 'lucide-react'
 import { useState } from 'react'
 import BarberPoleMark from '../ui/BarberPoleMark'
@@ -13,6 +13,7 @@ import toast from 'react-hot-toast'
 const navItems = [
   { to: '/admin',          label: 'Dashboard',     icon: LayoutDashboard, end: true },
   { to: '/admin/sales',    label: 'Nueva venta',   icon: ShoppingBag },
+  { to: '/admin/turnos',   label: 'Reservas',      icon: CalendarCheck },
   { to: '/admin/barbers',  label: 'Barberos',      icon: Users },
   { to: '/admin/drafts',   label: 'Registros',     icon: FileText },
   { to: '/admin/expenses', label: 'Gastos',        icon: ReceiptText },

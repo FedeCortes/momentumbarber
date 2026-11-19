@@ -444,3 +444,10 @@ html.light .bg-dark\/60 { background-color: rgb(28 25 23 / 0.38); }
 /* Deslizadores (comisión del barbero): con dorado claro Chrome pinta la parte
    vacía casi negra; con un dorado más profundo usa un riel claro */
 html.light .accent-gold { accent-color: #8a6516; }
+
+/* Reservas: aparición del check de «¡Listo!» */
+@keyframes pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  70%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}

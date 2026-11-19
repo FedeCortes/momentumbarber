@@ -18,6 +18,9 @@ import DraftsPage from './pages/admin/DraftsPage'
 import DayClosingPage from './pages/admin/DayClosingPage'
 import ExpensesPage from './pages/admin/ExpensesPage'
 import CustomersPage from './pages/admin/CustomersPage'
+import BookingsPage from './pages/admin/BookingsPage'
+
+import BookingPage from './pages/booking/BookingPage'
 
 import BarberDraftPage from './pages/barber/BarberDraftPage'
 import BarberHistoryPage from './pages/barber/BarberHistoryPage'
@@ -70,6 +73,9 @@ export default function App() {
   return (
     <Suspense fallback={<LoadingScreen />}>
     <Routes>
+      {/* PÚBLICO: reservas online de cada barbería (sin login) */}
+      <Route path="/reservar/:slug" element={<BookingPage />} />
+
       <Route path="/login" element={
         session
           ? isRoot ? <Navigate to="/root" replace />
@@ -98,6 +104,7 @@ export default function App() {
         <Route path="expenses" element={<ExpensesPage />} />
         <Route path="closing" element={<DayClosingPage />} />
         <Route path="customers" element={<CustomersPage />} />
+        <Route path="turnos" element={<BookingsPage />} />
         <Route path="stats" element={<StatsPage />} />
         <Route path="manual" element={<ManualPage />} />
       </Route>
