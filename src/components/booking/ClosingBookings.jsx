@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import Spinner from '../ui/Spinner'
 import { money, timeAR, fromLocalAR, addDaysKey, dayParts, dateKeyAR } from '../../lib/booking'
-import { loadBookingSaleContext, createSaleFromBooking, prepaidMethod, bookingSplit } from '../../lib/bookingSales'
+import { loadBookingSaleContext, createSaleFromBooking, createNoShowSale, isNoShowSale, prepaidMethod, bookingSplit } from '../../lib/bookingSales'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cierre → «Turnos reservados»
@@ -76,6 +76,22 @@ export default function ClosingBookings({ tenantId, from, to, sales, onChanged }
     }
   }
 
+  async function noShowOne(bk) {
+    if (!ctx) return
+    if (!confirm(`¿${bk.customer_name} no vino? La plata ya cobrada queda para el local (sin comisión).`)) return
+    setBusy(bk.id)
+    try {
+      await createNoShowSale(bk, ctx, method?.id)
+      toast.success(`${bk.customer_name}: no vino · suma al local`)
+    } catch (e) {
+      toast.error(e.message)
+    } finally {
+      setBusy(null)
+      onChanged?.()
+      setReload(r => r + 1)
+    }
+  }
+
   async function loadAll() {
     if (!ctx || !missing.length) return
     setBusy('all')
@@ -99,26 +115,28 @@ export default function ClosingBookings({ tenantId, from, to, sales, onChanged }
         <div className="flex-1 min-w-0">
           <p className="text-cream font-semibold">Turnos reservados</p>
           <p className="text-cream/45 text-xs">
-            {bookings.length} {bookings.length === 1 ? 'turno' : 'turnos'} · <b className="text-gold">{money(total)}</b> cobrados por adelantado
+            {bookings.length} {bookings.length === 1 ? 'turno' : 'turnos'} · <b className="text-gold">{money(total)}</b> ya cobrados
           </p>
+          <div className="mt-1.5">
+            {missing.length > 0
+              ? <span className="badge-pending">{missing.length} sin marcar</span>
+              : bookings.length > 0 && <span className="badge-active"><Check size={11} /> Todo marcado</span>}
+          </div>
         </div>
-        {missing.length > 0
-          ? <span className="badge-pending shrink-0">{missing.length} sin cargar</span>
-          : bookings.length > 0 && <span className="badge-active shrink-0"><Check size={11} /> Todo cargado</span>}
         {open ? <ChevronUp size={16} className="text-cream/30 shrink-0" /> : <ChevronDown size={16} className="text-cream/30 shrink-0" />}
       </button>
 
       {open && (
         <div className="px-4 pb-4 flex flex-col gap-3">
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Pagados" value={money(total)} />
-            <Stat label="En ventas" value={money(loadedTotal)} ok={loadedTotal === total && total > 0} />
-            <Stat label="Falta cargar" value={money(total - loadedTotal)} warn={total - loadedTotal > 0} />
+            <Stat label="Cobrado" value={money(total)} />
+            <Stat label="Marcado" value={money(loadedTotal)} ok={loadedTotal === total && total > 0} />
+            <Stat label="Falta" value={money(total - loadedTotal)} warn={total - loadedTotal > 0} />
           </div>
 
           <p className="text-cream/45 text-[11px] leading-relaxed">
-            Ya están cobrados{method ? <> por <b className="text-cream/70">{method.name}</b></> : ''}: no es plata de la caja. Al cargarlos a ventas
-            suman al total y a la comisión de cada barbero, igual que cualquier corte.
+            Ya cobrados{method ? <> por <b className="text-cream/70">{method.name}</b></> : ''} (no es plata de la caja). Marcá cada uno:
+            {' '}<b className="text-emerald-500">✓ Asistió</b> suma con la comisión del barbero · <b className="text-red-400">No vino</b> suma para el local.
           </p>
 
           {pending > 0 && (
@@ -137,29 +155,39 @@ export default function ClosingBookings({ tenantId, from, to, sales, onChanged }
                 const sale = inSales[bk.id]
                 const split = ctx ? bookingSplit(bk, ctx) : null
                 return (
-                  <div key={bk.id} className="px-3 py-2.5 flex items-center gap-3">
+                  <div key={bk.id} className="px-3 py-2.5 flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2">
                     <div className="w-12 shrink-0 text-center">
                       {multiDay && <p className="text-[10px] text-cream/40 leading-none mb-0.5">{dayParts(dateKeyAR(bk.starts_at)).day} {dayParts(dateKeyAR(bk.starts_at)).month}</p>}
                       <p className="text-gold font-bold text-sm leading-none">{timeAR(bk.starts_at)}</p>
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-[150px]">
                       <p className="text-cream text-sm font-semibold truncate">{bk.customer_name}</p>
                       <p className="text-cream/45 text-[11px] truncate">
                         {bk.service_name} · {barberName(bk.barber_id)} · {money(bk.price)}
-                        {split && split.barber && <> · barbero {money(split.forBarber)}</>}
+                        {split && split.barber && !(sale && isNoShowSale(sale)) && <> · barbero {money(split.forBarber)}</>}
                       </p>
                     </div>
                     {sale ? (
-                      <span className="badge-active shrink-0"><Check size={11} /> En ventas</span>
+                      isNoShowSale(sale)
+                        ? <span className="badge-inactive shrink-0 ml-auto">No vino · al local</span>
+                        : <span className="badge-active shrink-0 ml-auto"><Check size={11} /> Asistió</span>
                     ) : (
-                      <div className="flex flex-col items-end gap-1 shrink-0">
+                      <div className="flex flex-col items-end gap-1 shrink-0 ml-auto">
                         {drafted[bk.id] && (
-                          <span className="text-[10px] text-cream/45 flex items-center gap-1"><ClipboardList size={10} /> en registros</span>
+                          <span className="text-[10px] text-emerald-500/80 flex items-center gap-1"><ClipboardList size={10} /> el barbero lo marcó atendido</span>
                         )}
-                        <button onClick={() => loadOne(bk)} disabled={!ctx || !ready || busy != null}
-                          className="btn-outline-gold !px-2.5 !py-1.5 !text-xs">
-                          {busy === bk.id ? <Spinner size={12} /> : 'Cargar a ventas'}
-                        </button>
+                        <div className="flex gap-1">
+                          {!drafted[bk.id] && (
+                            <button onClick={() => noShowOne(bk)} disabled={!ctx || !ready || busy != null}
+                              className="px-2 py-1.5 rounded-lg text-[11px] font-semibold text-red-400/90 border border-red-500/30 hover:bg-red-500/10">
+                              No vino
+                            </button>
+                          )}
+                          <button onClick={() => loadOne(bk)} disabled={!ctx || !ready || busy != null}
+                            className="btn-outline-gold !px-2.5 !py-1.5 !text-xs">
+                            {busy === bk.id ? <Spinner size={12} /> : drafted[bk.id] ? 'Pasar a ventas' : '✓ Asistió'}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -170,7 +198,7 @@ export default function ClosingBookings({ tenantId, from, to, sales, onChanged }
 
           {missing.length > 1 && (
             <button onClick={loadAll} disabled={!ctx || !ready || busy != null} className="btn-gold w-full flex items-center justify-center gap-2">
-              {busy === 'all' ? <Spinner size={15} /> : <Check size={15} />} Cargar los {missing.length} a ventas
+              {busy === 'all' ? <Spinner size={15} /> : <Check size={15} />} Marcar los {missing.length} como asistidos
             </button>
           )}
         </div>

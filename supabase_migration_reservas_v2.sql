@@ -1,4 +1,5 @@
 -- ============================================================
+-- ⚠ ORDEN: reservas → logo → reservas_v2 → reservas_v3. Si ya corriste v3, NO vuelvas a correr esta.
 -- MIGRACIÓN — Reservas v2
 --   1) Precio online propio por servicio (opcional).
 --   2) La página del cliente muestra los horarios ocupados (en rojo) y

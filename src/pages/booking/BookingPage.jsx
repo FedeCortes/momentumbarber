@@ -135,6 +135,7 @@ export default function BookingPage() {
   const [anyBarber, setAnyBarber] = useState(false)
   const [slot, setSlot]       = useState(null)       // ISO string
   const [result, setResult]   = useState(null)
+  const [receipt, setReceipt] = useState({ file: null, path: null })   // se conserva si hay que elegir otro horario
 
   const topRef = useRef(null)
 
@@ -236,15 +237,20 @@ export default function BookingPage() {
       )}
       {(step === 'id' || step === 'id-mine') && (
         <IdentifyStep slug={slug} forMine={step === 'id-mine'}
-          onBack={() => go(step === 'id-mine' ? (slot ? 'pay' : 'service') : 'when')}
+          onBack={() => go(step === 'id-mine' ? (slot ? (client ? 'pay' : 'id') : 'service') : 'when')}
           onDone={c => { updateClient(c); go(step === 'id-mine' ? 'mine' : 'pay') }} />
+      )}
+      {step === 'pay' && !client && (
+        <IdentifyStep slug={slug} forMine={false} onBack={() => go('when')}
+          onDone={c => { updateClient(c); go('pay') }} />
       )}
       {step === 'pay' && client && (
         <PayStep slug={slug} shop={shop} client={client} service={service} barber={barber} slot={slot}
+          receipt={receipt} setReceipt={setReceipt}
           onBack={() => go('when')}
           onSlotTaken={() => { setSlot(null); go('when') }}
           onLoggedOut={() => { updateClient(null); go('id') }}
-          onDone={r => { setResult(r); go('done') }} />
+          onDone={r => { setResult(r); setReceipt({ file: null, path: null }); go('done') }} />
       )}
       {step === 'done' && result && (
         <DoneStep shop={shop} client={client} service={service} slot={slot} result={result}
@@ -597,11 +603,13 @@ function IdentifyStep({ slug, forMine, onBack, onDone }) {
 // ─────────────────────────────────────────────────────────────
 // 5 · Pago
 // ─────────────────────────────────────────────────────────────
-function PayStep({ slug, shop, client, service, barber, slot, onBack, onSlotTaken, onLoggedOut, onDone }) {
-  const [file, setFile]       = useState(null)
+function PayStep({ slug, shop, client, service, barber, slot, receipt, setReceipt, onBack, onSlotTaken, onLoggedOut, onDone }) {
+  const file = receipt.file
+  const paidPath = receipt.path   // si el turno se ocupó, el comprobante ya subido se reusa
+  const setFile = f => setReceipt({ file: f, path: null })
+  const setPaidPath = path => setReceipt(r => ({ ...r, path }))
   const [preview, setPreview] = useState(null)
   const [busy, setBusy]       = useState(false)
-  const [paidPath, setPaidPath] = useState(null)   // si el turno se ocupó, el comprobante ya subido se reusa
   const inputRef = useRef(null)
 
   useEffect(() => {
@@ -678,7 +686,7 @@ function PayStep({ slug, shop, client, service, barber, slot, onBack, onSlotTake
 
       <p className="label">2 · Subí el comprobante</p>
       <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden"
-             onChange={e => { const f = e.target.files?.[0]; if (f) { setFile(f); setPaidPath(null) } e.target.value = '' }} />
+             onChange={e => { const f = e.target.files?.[0]; if (f) setFile(f); e.target.value = '' }} />
       {!file ? (
         <button onClick={() => inputRef.current?.click()}
           className="w-full rounded-2xl border-2 border-dashed border-dark-400/70 hover:border-gold/60 bg-dark-200/60 py-7 flex flex-col items-center gap-2 transition-colors">
@@ -695,7 +703,7 @@ function PayStep({ slug, shop, client, service, barber, slot, onBack, onSlotTake
             <p className="text-cream text-sm font-semibold truncate">{file.name || 'Comprobante'}</p>
             <p className="text-emerald-500 text-xs font-semibold flex items-center gap-1"><Check size={12} /> Listo para enviar</p>
           </div>
-          <button onClick={() => { setFile(null); setPaidPath(null) }} aria-label="Quitar"
+          <button onClick={() => setFile(null)} aria-label="Quitar"
             className="p-2 rounded-lg text-cream/40 hover:text-cream hover:bg-dark-300/60"><X size={16} /></button>
         </div>
       )}
@@ -867,10 +875,14 @@ function MineStep({ shop, client, onClient, onLogout, onNew }) {
                   <a href={waTo(shop.whatsapp, `Hola! Soy ${client.name}, tengo turno el ${longDateAR(b.starts_at)} a las ${timeAR(b.starts_at)}.`)}
                      target="_blank" rel="noreferrer" className="btn-ghost !px-3 flex items-center gap-1.5"><MessageCircle size={14} /> Escribir</a>
                 )}
-                <button onClick={() => cancel(b)} disabled={busyId === b.id}
-                  className="btn-ghost !px-3 text-red-400/80 hover:!text-red-400 ml-auto">
-                  {busyId === b.id ? <Spinner size={14} /> : 'Cancelar'}
-                </button>
+                {b.status === 'pending' ? (
+                  <button onClick={() => cancel(b)} disabled={busyId === b.id}
+                    className="btn-ghost !px-3 text-red-400/80 hover:!text-red-400 ml-auto">
+                    {busyId === b.id ? <Spinner size={14} /> : 'Cancelar'}
+                  </button>
+                ) : (
+                  <span className="ml-auto text-[11px] text-cream/40 self-center">¿Cambio? Escribinos</span>
+                )}
               </div>
             </div>
           ))}

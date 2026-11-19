@@ -95,6 +95,8 @@ export async function createSaleFromBooking(booking, ctx, paymentMethodId) {
       throw new Error(niceError(r.error))
     }
   }
+  // Si el barbero ya lo había cargado en sus registros, ese registro queda «pasado a oficial»
+  await supabase.from('drafts').update({ status: 'approved' }).eq('booking_id', booking.id)
   return sale
 }
 
@@ -123,4 +125,76 @@ export async function createDraftFromBooking(booking, ctx, paymentMethodId) {
     }
   }
   return draft
+}
+
+// ── Cliente que pagó y no vino ───────────────────────────────────────────────
+// La plata ya entró: se carga como venta del LOCAL (sin barbero, sin comisión)
+// para que el cierre cuadre con lo cobrado. Se reconoce por la nota.
+export const NO_SHOW_NOTE = 'Turno pagado · no vino'
+export const isNoShowSale = sale => String(sale?.notes || '').startsWith(NO_SHOW_NOTE)
+
+export async function createNoShowSale(booking, ctx, paymentMethodId) {
+  const { data: dr } = await supabase.from('drafts').select('id').eq('booking_id', booking.id).limit(1)
+  if (dr?.length) throw new Error('El barbero ya lo cargó como atendido. Si no vino, primero deshacelo en su agenda.')
+  const price = Number(booking.price || 0)
+  const row = {
+    tenant_id: booking.tenant_id,
+    barber_id: null,
+    payment_method_id: paymentMethodId || prepaidMethod(ctx.methods)?.id || null,
+    tip: 0,
+    total_services: price,
+    total_products: 0,
+    total_drinks: 0,
+    barber_earnings: 0,
+    shop_earnings: price,
+    surcharge_amt: 0,
+    sale_date: dateKeyAR(booking.starts_at),
+    notes: `${NO_SHOW_NOTE} (${booking.customer_name} · ${booking.service_name})`,
+    booking_id: booking.id,
+    ...(booking.customer_id ? { customer_id: booking.customer_id } : {}),
+  }
+  // Va como venta «Solo local». Si la base no acepta ventas sin barbero, queda
+  // a nombre del barbero pero con comisión $0 (la plata igual es del local).
+  let { data: sale, error } = await supabase.from('sales').insert(row).select().single()
+  let withBarber = false
+  if (error && /barber_id|not-null|23502/i.test(`${error.message} ${error.code}`)) {
+    withBarber = true
+    ;({ data: sale, error } = await supabase.from('sales').insert({ ...row, barber_id: booking.barber_id }).select().single())
+  }
+  if (error) throw new Error(niceError(error))
+  if (booking.service_id) {
+    const r = await supabase.from('sale_items').insert({
+      sale_id: sale.id, item_type: 'service', item_id: booking.service_id,
+      name: booking.service_name, price, quantity: 1, commission_pct: withBarber ? 0 : null,
+    })
+    if (r.error) { await supabase.from('sales').delete().eq('id', sale.id); throw new Error(niceError(r.error)) }
+  }
+  return sale
+}
+
+/** Deshace «Asistió» / «No vino» del dueño: saca la venta del turno (y sus ítems) */
+export async function undoBookingSale(bookingId) {
+  const { error } = await supabase.from('sales').delete().eq('booking_id', bookingId)
+  if (error) throw new Error('No se pudo deshacer. Probá de nuevo.')
+  // Si venía de un registro del barbero, ese registro vuelve a quedar pendiente
+  await supabase.from('drafts').update({ status: 'pending' }).eq('booking_id', bookingId)
+}
+
+/** Deshace «Asistió» del barbero: saca su registro del turno */
+export async function undoBookingDraft(bookingId) {
+  const { data: d } = await supabase.from('drafts').select('id').eq('booking_id', bookingId)
+  for (const x of d || []) {
+    await supabase.from('draft_items').delete().eq('draft_id', x.id)
+    const r = await supabase.from('drafts').delete().eq('id', x.id)
+    if (r.error) throw new Error('No se pudo deshacer. Probá de nuevo.')
+  }
+}
+
+/** 'venta' | 'registro' | '' según si el turno ya se cargó */
+export async function bookingLinkState(bookingId) {
+  const [s1, d1] = await Promise.all([
+    supabase.from('sales').select('id').eq('booking_id', bookingId).limit(1),
+    supabase.from('drafts').select('id').eq('booking_id', bookingId).limit(1),
+  ])
+  return s1.data?.length ? 'venta' : d1.data?.length ? 'registro' : ''
 }

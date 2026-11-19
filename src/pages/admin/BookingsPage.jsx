@@ -11,7 +11,7 @@ import Spinner from '../../components/ui/Spinner'
 import EmptyState from '../../components/ui/EmptyState'
 import DayAgenda from '../../components/booking/DayAgenda'
 import MoveBooking from '../../components/booking/MoveBooking'
-import { loadBookingSaleContext, createSaleFromBooking } from '../../lib/bookingSales'
+import { loadBookingSaleContext, createSaleFromBooking, createNoShowSale, undoBookingSale, undoBookingDraft, bookingLinkState } from '../../lib/bookingSales'
 import {
   STATUS, WEEKDAYS, money, durationLabel, timeAR, longDateAR, dateKeyAR, addDaysKey, dayParts,
   fromLocalAR, receiptUrl, waTo,
@@ -87,6 +87,7 @@ function ListTab({ tenant, goSettings, goAgenda }) {
   const [items, setItems]       = useState(null)
   const [barbers, setBarbers]   = useState({})
   const [barberList, setBarberList] = useState([])
+  const [barberAll, setBarberAll]   = useState([])   // incluye inactivos (por si tienen turnos)
   const [agendaKey, setAgendaKey] = useState(0)
   const [enabled, setEnabled]   = useState(true)
   const [bookable, setBookable] = useState(true)   // hay al menos un barbero con horario
@@ -116,6 +117,7 @@ function ListTab({ tenant, goSettings, goAgenda }) {
       setItems(d.data || [])
       setBarbers(Object.fromEntries((b.data || []).map(x => [x.id, x.name])))
       setBarberList((b.data || []).filter(x => x.is_active !== false))
+      setBarberAll(b.data || [])
       setEnabled(!!c.data?.rsv_enabled)
       if (!shop.error && shop.data) setBookable((shop.data.barbers || []).length > 0 && (shop.data.services || []).length > 0)
     })
@@ -135,6 +137,29 @@ function ListTab({ tenant, goSettings, goAgenda }) {
     }
   }
 
+  async function noShow(bk) {
+    try {
+      const ctx = await loadBookingSaleContext(tenant.id)
+      await createNoShowSale(bk, ctx)
+      toast.success(`${bk.customer_name}: no vino · ${money(bk.price)} suman al local`)
+      setReceipt(null)
+      setAgendaKey(k => k + 1)
+    } catch (e) {
+      toast.error(e.message || 'No se pudo marcar')
+    }
+  }
+
+  async function undo(bk) {
+    try {
+      if (bk._went === 'registro') await undoBookingDraft(bk.id)
+      else await undoBookingSale(bk.id)
+      toast.success('Listo, se deshizo')
+      setAgendaKey(k => k + 1)
+    } catch (e) {
+      toast.error(e.message)
+    }
+  }
+
   async function openReceipt(bk) {
     if (!bk.receipt_path) { setReceipt({ url: null, isPdf: false, booking: bk }); return }
     try {
@@ -144,6 +169,10 @@ function ListTab({ tenant, goSettings, goAgenda }) {
   }
 
   async function setStatus(bk, status) {
+    if (status === 'cancelled' || status === 'rejected') {
+      const linked = await bookingLinkState(bk.id)
+      if (linked) return toast.error(`Este turno ya está ${linked === 'venta' ? 'en ventas' : 'en los registros del barbero'}: primero deshacé «Asistió / No vino».`)
+    }
     setBusy(bk.id)
     const patch = { status, decided_at: new Date().toISOString(), ...(status === 'cancelled' ? { cancelled_by: 'shop' } : {}) }
     const { error } = await supabase.from('bookings').update(patch).eq('id', bk.id)
@@ -233,8 +262,9 @@ function ListTab({ tenant, goSettings, goAgenda }) {
 
       {!items && <div className="py-12 flex justify-center"><Spinner /></div>}
       {items && (
-        <DayAgenda tenantId={tenant.id} barbers={barberList} day={day} refreshKey={agendaKey + reload}
-          onOpenBooking={openReceipt} onAttend={attend} attendHint="se suma como venta a Registros y al Cierre de ese día" />
+        <DayAgenda tenantId={tenant.id} barbers={barberAll} day={day} refreshKey={agendaKey + reload} promoteDrafts
+          onOpenBooking={openReceipt} onAttend={attend} onNoShow={noShow} onUndo={undo} onMove={setMoving}
+          attendHint="suma a Registros y Cierre" />
       )}
 
       {items && items.some(bk => bk.status === 'cancelled' || bk.status === 'rejected') && (
@@ -301,10 +331,16 @@ function ListTab({ tenant, goSettings, goAgenda }) {
                 <Check size={15} /> Asistió: sumar a Registros y Cierre
               </button>
             )}
+            {receipt.booking.status === 'confirmed' && (
+              <button onClick={() => { if (confirm('¿No vino? La plata ya cobrada queda para el local y suma al cierre (sin comisión).')) noShow(receipt.booking) }}
+                className="w-full mt-2 py-2 rounded-xl text-red-400/90 font-semibold text-sm hover:bg-red-500/10 flex items-center justify-center gap-1.5">
+                Pagó pero no vino
+              </button>
+            )}
             {['pending', 'confirmed'].includes(receipt.booking.status) && dateKeyAR(receipt.booking.starts_at) >= dateKeyAR() && (
               <button onClick={() => { setMoving(receipt.booking); setReceipt(null) }}
                 className="btn-outline-gold w-full mt-2 flex items-center justify-center gap-1.5">
-                <CalendarDays size={15} /> Mover turno (día, hora o barbero)
+                <CalendarDays size={15} /> Cambiar horario (día, hora o barbero)
               </button>
             )}
           </>
@@ -411,14 +447,19 @@ function AgendaTab({ tenant }) {
                 </div>
                 <Switch on={b.takes_bookings} onChange={() => toggleTakes(b)} label={`Turnos de ${b.name}`} />
               </div>
-              <div className="mt-3 pt-3 border-t border-dark-400/30 flex flex-wrap gap-1.5 items-center">
-                {days.length ? days.map(d => (
-                  <span key={d} className="text-[11px] px-2 py-1 rounded-lg bg-dark-300/60 text-cream/70">
-                    <b className="text-cream/90">{WEEKDAYS[d].slice(0, 3)}</b> {h[d].map(r => `${r.start}–${r.end}`).join(', ')}
-                  </span>
-                )) : <span className="text-cream/40 text-xs">Cargale los días y horarios en que atiende.</span>}
-                <button onClick={() => setEditing(b)} className="ml-auto text-gold text-xs font-semibold flex items-center gap-1 px-2 py-1">
-                  <Clock size={13} /> Editar horario
+              <div className="mt-3 pt-3 border-t border-dark-400/30 flex flex-col gap-2">
+                {days.length ? (
+                  <div className="flex flex-col gap-1">
+                    {summarizeWeek(h).map(g => (
+                      <p key={g.label} className="text-xs text-cream/70">
+                        <b className="text-cream/90">{g.label}</b> · {g.hours}
+                      </p>
+                    ))}
+                  </div>
+                ) : <p className="text-cream/40 text-xs">Todavía no tiene horario: cargale los días y horas en que atiende.</p>}
+                <button onClick={() => setEditing(b)}
+                  className="self-start text-gold text-xs font-semibold flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gold/35 hover:bg-gold/10">
+                  <Clock size={13} /> {days.length ? 'Editar horario' : 'Cargar horario'}
                 </button>
               </div>
             </div>
@@ -457,6 +498,27 @@ function AgendaTab({ tenant }) {
       )}
     </>
   )
+}
+
+// «Lun a Vie · 10:00–13:00 y 15:00–20:00» / «Sáb · 10:00–14:00»: agrupa días
+// seguidos (lunes primero) que tienen exactamente el mismo horario
+function summarizeWeek(h) {
+  const key = d => (h[d] || []).map(r => `${r.start}–${r.end}`).join(' y ')
+  const short = d => WEEKDAYS[d].slice(0, 3)
+  const out = []
+  let run = []
+  const flush = () => {
+    if (!run.length) return
+    const k = key(run[0])
+    if (k) out.push({ label: run.length === 1 ? short(run[0]) : run.length === 2 ? `${short(run[0])} y ${short(run[1])}` : `${short(run[0])} a ${short(run[run.length - 1])}`, hours: k })
+    run = []
+  }
+  for (const d of ORDER) {
+    if (run.length && key(d) !== key(run[0])) flush()
+    run.push(d)
+  }
+  flush()
+  return out
 }
 
 function blockLabel(x) {
@@ -773,23 +835,31 @@ function SettingsTab({ tenant }) {
           {services.map(s => {
             const differs = s._online !== '' && Number(s._online) !== Number(s.price)
             return (
-              <div key={s.id} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 py-3">
-                <div className="flex-1 min-w-[140px]">
+              <div key={s.id} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 py-3">
+                <div className="flex-1 min-w-0">
                   <p className="text-cream text-sm font-medium truncate">{s.name}</p>
                   <p className="text-cream/40 text-xs">
                     En el local {money(s.price)}
                     {differs && <> · <span className="text-gold font-semibold">online {money(s._online)}</span></>}
                   </p>
                 </div>
-                <select value={s.duration_min || 30} onChange={e => setDur(s.id, Number(e.target.value))}
-                  className="input-dark !w-[104px] !py-2 !px-3" aria-label={`Duración de ${s.name}`}>
-                  {[...new Set([...DURATIONS, s.duration_min || 30])].sort((a, b) => a - b).map(v => <option key={v} value={v}>{durationLabel(v)}</option>)}
-                </select>
-                <div className={`flex items-center w-[120px] rounded-xl border bg-dark-300/60 transition-colors ${differs ? 'border-gold/50' : 'border-dark-400/70'} ${onlinePriceReady ? '' : 'opacity-40'}`}>
-                  <span className="pl-3 text-cream/40 text-sm">$</span>
-                  <input value={s._online} onChange={e => setOnline(s.id, e.target.value)} disabled={!onlinePriceReady}
-                    inputMode="numeric" placeholder={String(Math.round(s.price))} aria-label={`Precio online de ${s.name}`}
-                    className="w-full bg-transparent border-0 focus:ring-0 text-cream text-sm py-2 pl-1.5 pr-3 placeholder:text-cream/30" />
+                <div className="grid grid-cols-2 sm:flex gap-2 sm:gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="sm:hidden text-[10px] font-bold uppercase tracking-widest text-cream/35">Duración</span>
+                    <select value={s.duration_min || 30} onChange={e => setDur(s.id, Number(e.target.value))}
+                      className="input-dark sm:!w-[104px] !py-2 !px-3" aria-label={`Duración de ${s.name}`}>
+                      {[...new Set([...DURATIONS, s.duration_min || 30])].sort((a, b) => a - b).map(v => <option key={v} value={v}>{durationLabel(v)}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="sm:hidden text-[10px] font-bold uppercase tracking-widest text-cream/35">Precio online</span>
+                    <div className={`flex items-center sm:w-[120px] rounded-xl border bg-dark-300/60 transition-colors ${differs ? 'border-gold/50' : 'border-dark-400/70'} ${onlinePriceReady ? '' : 'opacity-40'}`}>
+                      <span className="pl-3 text-cream/40 text-sm">$</span>
+                      <input value={s._online} onChange={e => setOnline(s.id, e.target.value)} disabled={!onlinePriceReady}
+                        inputMode="numeric" placeholder={String(Math.round(s.price))} aria-label={`Precio online de ${s.name}`}
+                        className="w-full bg-transparent border-0 focus:ring-0 text-cream text-sm py-2 pl-1.5 pr-3 placeholder:text-cream/30" />
+                    </div>
+                  </label>
                 </div>
               </div>
             )
@@ -797,12 +867,15 @@ function SettingsTab({ tenant }) {
         </div>
       </div>
 
-      <div className="fixed md:sticky bottom-[68px] md:bottom-4 left-0 right-0 px-4 md:px-0 z-20 pointer-events-none">
-        <button onClick={save} disabled={saving || !dirty}
-          className={`btn-gold w-full !py-3.5 pointer-events-auto shadow-gold-md transition-opacity ${dirty ? '' : 'opacity-0 md:opacity-40'}`}>
-          {saving ? 'Guardando…' : 'Guardar cambios'}
-        </button>
-      </div>
+      {/* Botón de guardar: aparece solo cuando hay algo para guardar */}
+      {(dirty || saving) && (
+        <div className="fixed md:sticky bottom-[76px] md:bottom-4 left-0 right-0 px-4 md:px-0 z-20 pointer-events-none">
+          <button onClick={save} disabled={saving}
+            className="btn-gold w-full !py-3.5 pointer-events-auto shadow-gold-md">
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

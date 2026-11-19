@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Ban, CalendarX2, Lock, Check } from 'lucide-react'
+import { Ban, CalendarX2, Lock, Check, UserX, Clock, Undo2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import Spinner from '../ui/Spinner'
@@ -21,7 +21,7 @@ import { fromLocalAR, addDaysKey, timeAR, money } from '../../lib/booking'
 const hhmm = t => String(t || '').slice(0, 5)
 const overlaps = (a1, a2, b1, b2) => a1 < b2 && b1 < a2
 
-export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAttend, attendHint, refreshKey = 0, emptyText }) {
+export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAttend, onNoShow, onUndo, onMove, attendHint, promoteDrafts = false, refreshKey = 0, emptyText }) {
   const [data, setData]   = useState(null)   // { slotMin, hours, blocks, bookings }
   const [err, setErr]     = useState(false)
   const [reload, setReload] = useState(0)
@@ -50,11 +50,11 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
       const bIds = (k.data || []).map(b => b.id)
       if (bIds.length) {
         const [sv, dr] = await Promise.all([
-          supabase.from('sales').select('booking_id').in('booking_id', bIds),
+          supabase.from('sales').select('booking_id,notes').in('booking_id', bIds),
           supabase.from('drafts').select('booking_id').in('booking_id', bIds),
         ])
         for (const r of dr.data || []) attended[r.booking_id] = 'registro'
-        for (const r of sv.data || []) attended[r.booking_id] = 'venta'
+        for (const r of sv.data || []) attended[r.booking_id] = String(r.notes || '').startsWith('Turno pagado · no vino') ? 'noshow' : 'venta'
       }
       if (!alive) return
       setData({
@@ -91,6 +91,14 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
           t = z
         }
       }
+      // Turnos que quedaron fuera del horario actual (se cambió el horario después
+      // de que reservaron): igual se muestran, con su propio casillero
+      for (const k of data.bookings.filter(k => k.barber_id === b.id)) {
+        if (cells.some(c => c.booking?.id === k.id)) continue
+        const a = +new Date(k.starts_at), z = +new Date(k.ends_at)
+        cells.push({ key: `${b.id}-bk-${k.id}`, a, z, booking: k, bookingStart: true, blocks: [], outside: true })
+      }
+      cells.sort((x, y) => x.a - y.a)
       const workStart = ranges.length ? fromLocalAR(day, ranges[0].s).getTime() : null
       const workEnd   = ranges.length ? fromLocalAR(day, ranges[ranges.length - 1].e).getTime() : null
       const freeCells = cells.filter(c => !c.booking && !c.blocks.length)
@@ -135,15 +143,25 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
     }
   }
 
-  async function attend(bk) {
-    if (!onAttend || busy) return
-    setBusy('att-' + bk.id)
+  async function run(kind, fn, bk) {
+    if (!fn || busy) return
+    setBusy(kind + '-' + bk.id)
     try {
-      await onAttend(bk)
+      await fn(bk)
     } finally {
       setBusy(null)
       setReload(r => r + 1)
     }
+  }
+  const attend = bk => run('att', onAttend, bk)
+  const noShow = bk => {
+    if (!confirm(`¿${bk.customer_name} no vino?\n\nEl turno ya estaba pagado: la plata queda para el local y se suma al cierre del día (sin comisión para el barbero).`)) return
+    run('ns', onNoShow, bk)
+  }
+  const undo = (bk, went) => {
+    const what = went === 'noshow' ? '«No vino»' : '«Asistió»'
+    if (!confirm(`¿Deshacer ${what} de ${bk.customer_name}?\n\nSe saca de ${went === 'registro' ? 'los registros' : 'ventas y del cierre'} y el turno vuelve a quedar pendiente de marcar.`)) return
+    run('undo', onUndo, { ...bk, _went: went })
   }
 
   async function toggleDay(row) {
@@ -161,8 +179,20 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
       } else {
         const own = data.blocks.filter(x => x.barber_id === row.barber.id)
         if (!own.length) { toast('No hay horarios para liberar: está lleno de turnos.'); return }
-        const { error } = await supabase.from('rsv_blocks').delete().in('id', own.map(x => x.id))
-        if (error) throw error
+        // Solo se libera ESTE día: un bloqueo más largo (vacaciones) se recorta y sigue vigente el resto
+        const dayA = fromLocalAR(day, '00:00').getTime(), dayZ = fromLocalAR(addDaysKey(day, 1), '00:00').getTime()
+        for (const x of own) {
+          const xs = +new Date(x.starts_at), xe = +new Date(x.ends_at)
+          const del = await supabase.from('rsv_blocks').delete().eq('id', x.id)
+          if (del.error) throw del.error
+          const rest = []
+          if (xs < dayA) rest.push({ starts_at: new Date(xs).toISOString(), ends_at: new Date(dayA).toISOString() })
+          if (xe > dayZ) rest.push({ starts_at: new Date(dayZ).toISOString(), ends_at: new Date(xe).toISOString() })
+          if (rest.length) {
+            const ins = await supabase.from('rsv_blocks').insert(rest.map(r => ({ ...r, tenant_id: tenantId, barber_id: x.barber_id, reason: x.reason })))
+            if (ins.error) throw ins.error
+          }
+        }
         toast.success(`${row.barber.name}: día liberado`)
       }
       setReload(r => r + 1)
@@ -184,16 +214,17 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
   if (!data) return <div className="py-10 flex justify-center"><Spinner /></div>
 
   const working = rows.filter(r => r.cells.length)
-  const off = rows.filter(r => !r.cells.length)
+  const off = rows.filter(r => !r.cells.length && r.barber.is_active !== false)
   const now = Date.now()
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-4 text-[11px] text-cream/50 px-1">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-cream/50 px-1 [&>span]:whitespace-nowrap">
         <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-[4px] border border-dark-400 bg-dark-200" /> Libre</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-[4px] bg-gold" /> Turno</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-[4px] bg-red-500/70" /> Ocupado</span>
         <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-[4px] bg-emerald-500/60" /> Asistió</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-[4px] border border-red-500/50 bg-dark-300" /> No vino</span>
         <span className="ml-auto text-cream/35 hidden sm:inline">Tocá un horario para marcarlo ocupado o libre</span>
       </div>
 
@@ -236,6 +267,7 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
                 const cls = c.booking
                   ? (c.booking.status === 'pending'
                       ? 'bg-amber-500/15 border-amber-500/50 text-amber-500'
+                      : went === 'noshow' ? 'bg-dark-300/60 border-red-500/35 text-red-400/80'
                       : went ? 'bg-emerald-500/15 border-emerald-500/50 text-emerald-500'
                       : 'bg-gold border-gold text-ink')
                   : c.blocks.length
@@ -249,7 +281,7 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
                       <>
                         <span className="block text-[13px] font-bold leading-tight">{timeAR(c.a)}</span>
                         <span className="block text-[9px] font-bold uppercase tracking-wide truncate px-1 leading-tight mt-0.5 opacity-85">
-                          {c.booking ? (first ? (went ? `✓ ${name}` : name) : '···') : c.blocks.length ? (c.blocks.some(x => x.barber_id == null) ? <Lock size={9} className="inline" /> : 'Ocupado') : 'Libre'}
+                          {c.booking ? (first ? (went === 'noshow' ? 'No vino' : went ? `✓ ${name}` : name) : '···') : c.blocks.length ? (c.blocks.some(x => x.barber_id == null) ? <Lock size={9} className="inline" /> : 'Ocupado') : 'Libre'}
                         </span>
                       </>
                     )}
@@ -261,32 +293,64 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
             {row.turnos > 0 && (
               <div className="mt-3 flex flex-col gap-1">
                 {onAttend && (
-                  <p className="text-[11px] text-cream/40 px-2.5 pb-1">Cuando el cliente vino, tocá <b className="text-emerald-500">✓ Asistió</b>: {attendHint || 'se suma a Registros y al Cierre'}.</p>
+                  <p className="text-[11px] text-cream/40 px-1 pb-1 leading-relaxed">
+                    Vino → <b className="text-emerald-500">✓ Asistió</b> ({attendHint || 'suma a Registros y Cierre'})
+                    {onNoShow && <> · Pagó y no vino → <b className="text-red-400">No vino</b></>}
+                    {onMove && <> · <Clock size={10} className="inline -mt-0.5" /> cambia el horario</>}
+                  </p>
                 )}
                 {[...new Map(row.cells.filter(c => c.booking).map(c => [c.booking.id, c.booking])).values()].map(bk => {
                   const went = data.attended?.[bk.id]
                   return (
-                    <div key={bk.id} className="flex items-center gap-2 rounded-lg hover:bg-dark-300/40 transition-colors">
-                      <button onClick={() => onOpenBooking?.(bk)} className="flex-1 min-w-0 flex items-center gap-2 text-left text-xs px-2.5 py-2">
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${bk.status === 'pending' ? 'bg-amber-500' : went ? 'bg-emerald-500' : 'bg-gold'}`} />
+                    <div key={bk.id} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 rounded-xl border border-dark-400/30 sm:border-0 hover:bg-dark-300/40 transition-colors p-1.5 sm:p-0">
+                      <button onClick={() => onOpenBooking?.(bk)} className="w-full sm:w-auto sm:flex-1 min-w-0 flex items-center gap-2 text-left text-xs px-2 py-1.5 sm:px-2.5 sm:py-2">
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${bk.status === 'pending' ? 'bg-amber-500' : went === 'noshow' ? 'bg-red-400' : went ? 'bg-emerald-500' : 'bg-gold'}`} />
                         <b className="text-cream">{timeAR(bk.starts_at)}</b>
                         <span className="text-cream/70 truncate flex-1">{bk.customer_name} · {bk.service_name}</span>
                         <span className="text-cream/45 shrink-0">{money(bk.price)}</span>
                       </button>
-                      <div className="shrink-0 pr-1.5">
+                      <div className="shrink-0 sm:pr-1.5 flex items-center justify-end gap-1.5">
+                        {!went && onMove && (
+                          <button onClick={() => onMove(bk)} disabled={busy != null} title="Cambiar horario"
+                            className="p-1.5 rounded-lg border border-dark-400/60 text-cream/55 hover:text-gold hover:border-gold/50">
+                            <Clock size={13} />
+                          </button>
+                        )}
                         {bk.status === 'pending' ? (
                           <span className="badge-pending !text-[10px]">Falta confirmar pago</span>
+                        ) : went === 'registro' && promoteDrafts && onAttend ? (
+                          <>
+                            <span className="badge-active !text-[10px]" title="El barbero lo marcó como atendido"><Check size={10} /> Barbero: asistió</span>
+                            <button onClick={() => attend(bk)} disabled={busy != null} title="Pasarlo a ventas: suma a Registros y Cierre"
+                              className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-emerald-500/45 text-emerald-500 hover:bg-emerald-500/10 flex items-center gap-1">
+                              {busy === 'att-' + bk.id ? <Spinner size={11} /> : <Check size={12} />} Pasar a ventas
+                            </button>
+                          </>
                         ) : went ? (
-                          <span className="badge-active !text-[10px]" title={went === 'venta' ? 'Ya suma en Registros y Cierre' : 'En los registros del barbero'}>
-                            <Check size={10} /> Asistió · {went === 'venta' ? 'en ventas' : 'en registros'}
-                          </span>
-                        ) : onAttend ? (
-                          <button onClick={() => attend(bk)} disabled={busy != null}
-                            title={attendHint || 'Marcar que vino: se suma a Registros y Cierre'}
-                            className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-emerald-500/45 text-emerald-500 hover:bg-emerald-500/10 flex items-center gap-1">
-                            {busy === 'att-' + bk.id ? <Spinner size={11} /> : <Check size={12} />} Asistió
+                          <button onClick={() => onUndo && undo(bk, went)} disabled={!onUndo || busy != null}
+                            title={onUndo ? 'Tocá para deshacer' : ''}
+                            className={`${went === 'noshow' ? 'badge-inactive' : 'badge-active'} !text-[10px] ${onUndo ? 'hover:opacity-75 cursor-pointer' : 'cursor-default'}`}>
+                            {busy === 'undo-' + bk.id ? <Spinner size={10} /> : went === 'noshow' ? <UserX size={10} /> : <Check size={10} />}
+                            {went === 'noshow' ? 'No vino · suma al local' : `Asistió · ${went === 'venta' ? 'en ventas' : 'en registros'}`}
+                            {onUndo && <Undo2 size={10} className="opacity-60" />}
                           </button>
-                        ) : null}
+                        ) : (
+                          <>
+                            {onNoShow && (
+                              <button onClick={() => noShow(bk)} disabled={busy != null} title="Pagó pero no vino"
+                                className="text-[11px] font-semibold px-2 py-1.5 rounded-lg border border-red-500/35 text-red-400/90 hover:bg-red-500/10 flex items-center gap-1">
+                                {busy === 'ns-' + bk.id ? <Spinner size={11} /> : <UserX size={12} />} No vino
+                              </button>
+                            )}
+                            {onAttend && (
+                              <button onClick={() => attend(bk)} disabled={busy != null}
+                                title={attendHint || 'Marcar que vino: se suma a Registros y Cierre'}
+                                className="text-[11px] font-semibold px-2.5 py-1.5 rounded-lg border border-emerald-500/45 text-emerald-500 hover:bg-emerald-500/10 flex items-center gap-1">
+                                {busy === 'att-' + bk.id ? <Spinner size={11} /> : <Check size={12} />} Asistió
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                   )

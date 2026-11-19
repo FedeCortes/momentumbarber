@@ -1,4 +1,5 @@
 -- ============================================================
+-- ⚠ ORDEN: reservas → logo → reservas_v2 → reservas_v3. Si ya corriste las siguientes, NO vuelvas a correr esta.
 -- MIGRACIÓN — Logo propio de cada barbería
 -- Ejecutar en el SQL Editor de Supabase. Idempotente.
 --

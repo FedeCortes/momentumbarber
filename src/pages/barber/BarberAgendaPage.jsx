@@ -8,7 +8,7 @@ import Modal from '../../components/ui/Modal'
 import MoveBooking from '../../components/booking/MoveBooking'
 import Spinner from '../../components/ui/Spinner'
 import { STATUS, money, timeAR, longDateAR, dateKeyAR, addDaysKey, dayParts, fromLocalAR, waTo } from '../../lib/booking'
-import { loadBookingSaleContext, createDraftFromBooking, bookingSplit } from '../../lib/bookingSales'
+import { loadBookingSaleContext, createDraftFromBooking, bookingSplit, undoBookingDraft } from '../../lib/bookingSales'
 
 // Agenda del barbero: ve sus turnos reservados, marca horarios ocupados y
 // carga cada turno atendido a «Mis registros» con un toque.
@@ -35,7 +35,7 @@ export default function BarberAgendaPage() {
       supabase.from('bookings').select('*').eq('tenant_id', tenant.id).eq('barber_id', barber.id)
         .in('status', ['pending', 'confirmed']).gte('starts_at', start).lt('starts_at', end).order('starts_at'),
       supabase.from('drafts').select('booking_id').eq('tenant_id', tenant.id).eq('barber_id', barber.id).not('booking_id', 'is', null),
-      supabase.from('sales').select('booking_id').eq('tenant_id', tenant.id).eq('barber_id', barber.id).not('booking_id', 'is', null),
+      supabase.from('sales').select('booking_id').eq('tenant_id', tenant.id).not('booking_id', 'is', null),
     ]).then(([k, d, sv]) => {
       if (!alive) return
       setBookings(k.data || [])
@@ -67,6 +67,19 @@ export default function BarberAgendaPage() {
     }
   }
 
+  // Deshacer «Asistió» del barbero: solo si sigue en sus registros (si el admin
+  // ya lo pasó a ventas, lo deshace el admin)
+  async function undo(bk) {
+    if (bk._went !== 'registro') { toast('Ya está en ventas: pedile al admin que lo deshaga.'); return }
+    try {
+      await undoBookingDraft(bk.id)
+      toast.success('Listo, se deshizo')
+      setReload(r => r + 1)
+    } catch (e) {
+      toast.error(e.message)
+    }
+  }
+
   if (!barber) return null
   const isToday = day === dateKeyAR()
   const p = dayParts(day)
@@ -91,7 +104,8 @@ export default function BarberAgendaPage() {
       </div>
 
       <DayAgenda tenantId={tenant.id} barbers={[barber]} day={day} refreshKey={reload}
-        onOpenBooking={setOpen} onAttend={hasLink ? toRecords : undefined} attendHint="se carga en Mis registros (ya pagado)" emptyText="No tenés horario cargado este día. Pedile al admin que te lo cargue en Reservas → Agenda." />
+        onOpenBooking={setOpen} onAttend={hasLink ? toRecords : undefined} onUndo={hasLink ? undo : undefined} onMove={setMoving}
+        attendHint="va a Mis registros" emptyText="No tenés horario cargado este día. Pedile al admin que te lo cargue en Reservas → Agenda." />
 
       {bookings && bookings.length > 0 && (
         <div className="mt-6">
@@ -148,7 +162,7 @@ export default function BarberAgendaPage() {
               </button>
             )}
             {!loaded[open.id] && dateKeyAR(open.starts_at) >= dateKeyAR() && (
-              <button onClick={() => { setMoving(open); setOpen(null) }} className="btn-outline-gold">Mover turno</button>
+              <button onClick={() => { setMoving(open); setOpen(null) }} className="btn-outline-gold">Cambiar horario</button>
             )}
           </div>
         )}

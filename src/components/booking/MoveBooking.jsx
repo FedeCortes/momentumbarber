@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import Modal from '../ui/Modal'
 import Spinner from '../ui/Spinner'
-import { fetchGrid, timeAR, longDateAR, dateKeyAR, addDaysKey, dayParts, waTo } from '../../lib/booking'
+import { fetchGrid, timeAR, longDateAR, dateKeyAR, addDaysKey, dayParts, waTo, fromLocalAR } from '../../lib/booking'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mover un turno reservado: otro día, otra hora y/o otro barbero.
@@ -41,16 +41,34 @@ export default function MoveBooking({ booking, tenantSlug, tenantName, barbers, 
     if (!booking.service_id) { setSlots([]); return }
     let alive = true
     setSlots(null); setPick(null)
-    fetchGrid(tenantSlug, booking.service_id, barberId, day)
-      .then(rows => {
+    // La grilla da los horarios posibles; lo libre se recalcula acá sin contar
+    // este mismo turno (si no, los horarios pegados al actual salen ocupados).
+    const start = fromLocalAR(day, '00:00').toISOString()
+    const end   = fromLocalAR(addDaysKey(day, 1), '00:00').toISOString()
+    Promise.all([
+      fetchGrid(tenantSlug, booking.service_id, barberId, day),
+      supabase.from('bookings').select('id,starts_at,ends_at').eq('barber_id', barberId)
+        .in('status', ['pending', 'confirmed']).neq('id', booking.id).lt('starts_at', end).gt('ends_at', start),
+      supabase.from('rsv_blocks').select('barber_id,starts_at,ends_at').eq('tenant_id', booking.tenant_id)
+        .lt('starts_at', end).gt('ends_at', start),
+    ])
+      .then(([rows, k, x]) => {
         if (!alive) return
+        const busyRanges = [
+          ...(k.data || []),
+          ...(x.data || []).filter(b => b.barber_id == null || b.barber_id === barberId),
+        ].map(r => [+new Date(r.starts_at), +new Date(r.ends_at)])
         const own = new Date(booking.starts_at).toISOString()
-        const free = (rows || []).filter(r => r.barber_id === barberId && r.free).map(r => new Date(r.starts_at).toISOString())
-        setSlots([...new Set(free)].filter(iso => !(iso === own && barberId === booking.barber_id)).sort())
+        const cand = [...new Set((rows || []).filter(r => r.barber_id === barberId).map(r => new Date(r.starts_at).toISOString()))]
+        const free = cand.filter(iso => {
+          const a = +new Date(iso), z = a + durMs
+          return !busyRanges.some(([s1, e1]) => a < e1 && s1 < z)
+        })
+        setSlots(free.filter(iso => !(iso === own && barberId === booking.barber_id)).sort())
       })
       .catch(() => alive && setSlots([]))
     return () => { alive = false }
-  }, [tenantSlug, booking.service_id, booking.starts_at, booking.barber_id, barberId, day])
+  }, [tenantSlug, booking.id, booking.tenant_id, booking.service_id, booking.starts_at, booking.barber_id, barberId, day, durMs])
 
   async function save() {
     if (!pick) return
@@ -63,7 +81,7 @@ export default function MoveBooking({ booking, tenantSlug, tenantName, barbers, 
       toast.error(/overlap|exclusion|conflict/i.test(error.message || '') ? 'Ese horario se acaba de ocupar. Elegí otro.' : 'No se pudo mover el turno')
       return
     }
-    toast.success('Turno movido')
+    toast.success('Horario cambiado')
     setDone({ ...booking, ...patch })
     onMoved?.()
   }
@@ -73,9 +91,9 @@ export default function MoveBooking({ booking, tenantSlug, tenantName, barbers, 
 
   if (done) {
     const first = (done.customer_name || '').split(' ')[0]
-    const msg = `hola ${first}! te movimos el turno de ${done.service_name} al ${longDateAR(done.starts_at).toLowerCase()} a las ${timeAR(done.starts_at)} con ${barberName(done.barber_id)}. cualquier cosa avisanos. ${tenantName || ''}`.trim()
+    const msg = `hola ${first}! te cambiamos el turno de ${done.service_name} al ${longDateAR(done.starts_at).toLowerCase()} a las ${timeAR(done.starts_at)} con ${barberName(done.barber_id)}. cualquier cosa avisanos. ${tenantName || ''}`.trim()
     return (
-      <Modal open onClose={onClose} title="Turno movido" size="sm">
+      <Modal open onClose={onClose} title="Horario cambiado" size="sm">
         <div className="flex flex-col gap-4 text-sm">
           <p className="text-cream/70">
             <Check size={15} className="text-emerald-500 inline -mt-0.5 mr-1" />
@@ -95,7 +113,7 @@ export default function MoveBooking({ booking, tenantSlug, tenantName, barbers, 
   }
 
   return (
-    <Modal open onClose={onClose} title="Mover turno">
+    <Modal open onClose={onClose} title="Cambiar horario">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-cream/60">
           <b className="text-cream">{booking.customer_name}</b> · {booking.service_name}<br />
@@ -138,7 +156,7 @@ export default function MoveBooking({ booking, tenantSlug, tenantName, barbers, 
             </div>
 
             <div>
-              <p className="label">Horario libre</p>
+              <p className="label">Tocá el nuevo horario</p>
               {!slots && <div className="py-6 flex justify-center"><Spinner /></div>}
               {slots && !slots.length && <p className="text-cream/45 text-sm py-3">No hay horarios libres ese día{lockBarber ? '' : ' para ese barbero'}.</p>}
               {slots && slots.length > 0 && (
@@ -156,7 +174,7 @@ export default function MoveBooking({ booking, tenantSlug, tenantName, barbers, 
             <div className="flex gap-2">
               <button onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
               <button onClick={save} disabled={!pick || saving} className="btn-gold flex-1">
-                {saving ? 'Moviendo…' : pick ? `Mover a las ${timeAR(pick)}` : 'Elegí un horario'}
+                {saving ? 'Guardando…' : pick ? `Pasar a las ${timeAR(pick)}${day !== dateKeyAR(booking.starts_at) ? ` del ${dayParts(day).dow} ${dayParts(day).day}` : ''}` : 'Elegí un horario'}
               </button>
             </div>
           </>

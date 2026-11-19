@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FileText, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Receipt, Plus, Minus, Pencil, Trash2, ClipboardList, ArrowRightLeft, CalendarCheck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -22,11 +22,11 @@ import { Link } from 'react-router-dom'
 const rowTotal = r => Number(r.total || 0) + Number(r.surcharge_amt || 0)
 
 // Marca de «vino de un turno reservado» (pagado por adelantado en la web)
-function BookingChip({ compact }) {
+function BookingChip({ compact, noShow }) {
   return (
-    <span title="Turno reservado online: el cliente ya lo pagó por adelantado"
-      className={`inline-flex items-center gap-1 rounded-full bg-gold/12 border border-gold/30 text-gold font-bold uppercase tracking-wide ${compact ? 'text-[8.5px] px-1.5 py-px' : 'text-[10px] px-2 py-0.5'}`}>
-      <CalendarCheck size={compact ? 9 : 10} /> Turno reservado · pagado
+    <span title={noShow ? 'Pagó el turno online y no vino: la plata queda para el local' : 'Turno reservado online: el cliente ya lo pagó por adelantado'}
+      className={`inline-flex items-center gap-1 rounded-full font-bold uppercase tracking-wide ${noShow ? 'bg-red-500/10 border border-red-500/30 text-red-400' : 'bg-gold/12 border border-gold/30 text-gold'} ${compact ? 'text-[8.5px] px-1.5 py-px' : 'text-[10px] px-2 py-0.5'}`}>
+      <CalendarCheck size={compact ? 9 : 10} /> {noShow ? 'Turno pagado · no vino' : 'Turno reservado · pagado'}
     </span>
   )
 }
@@ -59,6 +59,8 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState(null)
   const [working, setWorking] = useState(false)
+  const [copied, setCopied]   = useState(draft.status === 'approved')   // ya se pasó a venta oficial
+  const copyLock = useRef(false)                                       // frena el doble click
   const [editOpen, setEditOpen]     = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [saving, setSaving]         = useState(false)
@@ -84,8 +86,13 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
   }
 
   async function copyToOfficial() {
+    if (copyLock.current) return
+    copyLock.current = true
     setWorking(true)
     try {
+      // Si ya se pasó (otro click, otra pestaña), no se vuelve a crear
+      const { data: fresh } = await supabase.from('drafts').select('status').eq('id', draft.id).maybeSingle()
+      if (fresh?.status === 'approved') { setCopied(true); toast('Este registro ya está en ventas oficiales'); return }
       const { data: draftItems } = await supabase.from('draft_items').select('*').eq('draft_id', draft.id)
       const barber = barbers.find(b => b.id === draft.barber_id)
       let bookingCustomer = null
@@ -147,12 +154,15 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
         )
       }
       if (stockEnabled) await applyStockDelta(draftItems || [], -1)
+      await supabase.from('drafts').update({ status: 'approved' }).eq('id', draft.id)
+      setCopied(true)
       toast.success('Venta oficial creada')
       onChange?.()
     } catch (e) {
       toast.error(e.message || 'Error al procesar')
     } finally {
       setWorking(false)
+      copyLock.current = false
     }
   }
 
@@ -320,7 +330,12 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
               <p className="text-cream/25 text-xs mb-3">Sin detalle de ítems</p>
             )}
 
-            {isAdmin && !compact && (
+            {isAdmin && !compact && copied && (
+              <p className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-emerald-500/30 text-emerald-500 text-xs">
+                <Check size={13} /> Ya está en ventas oficiales
+              </p>
+            )}
+            {isAdmin && !compact && !copied && (
               <button
                 disabled={working}
                 onClick={copyToOfficial}
@@ -671,7 +686,7 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, barber
           <button onClick={toggle} className="flex-1 text-left min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`font-display text-cream ${compact ? 'text-[15px]' : 'text-base'}`}>${rowTotal(sale).toLocaleString('es-AR')}</span>
-              {sale.booking_id && <BookingChip compact={compact} />}
+              {sale.booking_id && <BookingChip compact={compact} noShow={String(sale.notes || '').startsWith('Turno pagado · no vino')} />}
             </div>
             <div className={`flex mt-0.5 flex-wrap ${compact ? 'gap-x-2 gap-y-0.5' : 'gap-3'}`}>
               {showDate && <span className={`text-gold/50 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(sale.sale_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
