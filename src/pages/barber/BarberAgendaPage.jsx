@@ -35,11 +35,13 @@ export default function BarberAgendaPage() {
       supabase.from('bookings').select('*').eq('tenant_id', tenant.id).eq('barber_id', barber.id)
         .in('status', ['pending', 'confirmed']).gte('starts_at', start).lt('starts_at', end).order('starts_at'),
       supabase.from('drafts').select('booking_id').eq('tenant_id', tenant.id).eq('barber_id', barber.id).not('booking_id', 'is', null),
-    ]).then(([k, d]) => {
+      supabase.from('sales').select('booking_id').eq('tenant_id', tenant.id).eq('barber_id', barber.id).not('booking_id', 'is', null),
+    ]).then(([k, d, sv]) => {
       if (!alive) return
       setBookings(k.data || [])
       setHasLink(!d.error)
-      setLoaded(Object.fromEntries((d.data || []).map(x => [x.booking_id, true])))
+      // Asistido = ya está en sus registros o el admin ya lo pasó a ventas
+      setLoaded(Object.fromEntries([...(d.data || []), ...(sv.data || [])].map(x => [x.booking_id, true])))
     })
     return () => { alive = false }
   }, [tenant?.id, barber?.id, day, reload])
@@ -89,7 +91,7 @@ export default function BarberAgendaPage() {
       </div>
 
       <DayAgenda tenantId={tenant.id} barbers={[barber]} day={day} refreshKey={reload}
-        onOpenBooking={setOpen} emptyText="No tenés horario cargado este día. Pedile al admin que te lo cargue en Reservas → Agenda." />
+        onOpenBooking={setOpen} onAttend={hasLink ? toRecords : undefined} attendHint="se carga en Mis registros (ya pagado)" emptyText="No tenés horario cargado este día. Pedile al admin que te lo cargue en Reservas → Agenda." />
 
       {bookings && bookings.length > 0 && (
         <div className="mt-6">
@@ -105,7 +107,7 @@ export default function BarberAgendaPage() {
                   <p className="text-cream/50 text-xs truncate">{bk.service_name} · {money(bk.price)} pagado</p>
                 </div>
                 {loaded[bk.id]
-                  ? <span className="badge-active shrink-0"><Check size={11} /> En registros</span>
+                  ? <span className="badge-active shrink-0"><Check size={11} /> Asistió</span>
                   : <span className={`${STATUS[bk.status]?.cls} shrink-0`}>{STATUS[bk.status]?.short}</span>}
               </button>
             ))}
@@ -137,12 +139,12 @@ export default function BarberAgendaPage() {
             {open.status === 'pending' ? (
               <p className="text-amber-500 text-xs">La barbería todavía no confirmó el pago de este turno.</p>
             ) : loaded[open.id] ? (
-              <p className="text-emerald-500 text-sm font-semibold flex items-center gap-1.5"><Check size={15} /> Ya está en tus registros</p>
+              <p className="text-emerald-500 text-sm font-semibold flex items-center gap-1.5"><Check size={15} /> Asistió · ya está en tus registros</p>
             ) : !hasLink ? (
               <p className="text-cream/45 text-xs">Para cargarlo con un toque falta una actualización de la base (avisale al admin).</p>
             ) : (
               <button onClick={() => toRecords(open)} disabled={busy || !ctx} className="btn-gold flex items-center justify-center gap-2">
-                {busy ? <Spinner size={15} /> : <ClipboardCheck size={16} />} Atendido: cargar a Mis registros
+                {busy ? <Spinner size={15} /> : <ClipboardCheck size={16} />} Asistió: cargar a Mis registros
               </button>
             )}
             {!loaded[open.id] && dateKeyAR(open.starts_at) >= dateKeyAR() && (

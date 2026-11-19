@@ -11,6 +11,7 @@ import Spinner from '../../components/ui/Spinner'
 import EmptyState from '../../components/ui/EmptyState'
 import DayAgenda from '../../components/booking/DayAgenda'
 import MoveBooking from '../../components/booking/MoveBooking'
+import { loadBookingSaleContext, createSaleFromBooking } from '../../lib/bookingSales'
 import {
   STATUS, WEEKDAYS, money, durationLabel, timeAR, longDateAR, dateKeyAR, addDaysKey, dayParts,
   fromLocalAR, receiptUrl, waTo,
@@ -121,6 +122,19 @@ function ListTab({ tenant, goSettings, goAgenda }) {
     return () => { alive = false }
   }, [tenant.id, day, reload])
 
+  // «Asistió»: el turno pasa a ventas oficiales (suma en Registros y Cierre del día del turno)
+  async function attend(bk) {
+    try {
+      const ctx = await loadBookingSaleContext(tenant.id)
+      await createSaleFromBooking(bk, ctx)
+      toast.success(`${bk.customer_name}: asistió · sumado a Registros y Cierre`)
+      setReceipt(null)
+      setAgendaKey(k => k + 1)
+    } catch (e) {
+      toast.error(e.message || 'No se pudo marcar')
+    }
+  }
+
   async function openReceipt(bk) {
     if (!bk.receipt_path) { setReceipt({ url: null, isPdf: false, booking: bk }); return }
     try {
@@ -220,7 +234,7 @@ function ListTab({ tenant, goSettings, goAgenda }) {
       {!items && <div className="py-12 flex justify-center"><Spinner /></div>}
       {items && (
         <DayAgenda tenantId={tenant.id} barbers={barberList} day={day} refreshKey={agendaKey + reload}
-          onOpenBooking={openReceipt} />
+          onOpenBooking={openReceipt} onAttend={attend} attendHint="se suma como venta a Registros y al Cierre de ese día" />
       )}
 
       {items && items.some(bk => bk.status === 'cancelled' || bk.status === 'rejected') && (
@@ -281,6 +295,12 @@ function ListTab({ tenant, goSettings, goAgenda }) {
             ) : receipt.booking.status === 'confirmed' && new Date(receipt.booking.starts_at) > new Date() ? (
               <button onClick={() => setStatus(receipt.booking, 'cancelled')} className="btn-ghost w-full text-red-400/80">Cancelar este turno</button>
             ) : null}
+            {receipt.booking.status === 'confirmed' && (
+              <button onClick={() => attend(receipt.booking)}
+                className="w-full mt-2 py-2.5 rounded-xl border border-emerald-500/45 text-emerald-500 font-semibold text-sm hover:bg-emerald-500/10 flex items-center justify-center gap-1.5">
+                <Check size={15} /> Asistió: sumar a Registros y Cierre
+              </button>
+            )}
             {['pending', 'confirmed'].includes(receipt.booking.status) && dateKeyAR(receipt.booking.starts_at) >= dateKeyAR() && (
               <button onClick={() => { setMoving(receipt.booking); setReceipt(null) }}
                 className="btn-outline-gold w-full mt-2 flex items-center justify-center gap-1.5">
