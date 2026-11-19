@@ -73,8 +73,8 @@ export default function BarberAgendaPage() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="section-title mb-0.5">Mi agenda</h1>
-        <p className="section-sub">Tocá un horario para marcarlo ocupado o libre. Los clientes lo ven al instante.</p>
+        <h1 className="section-title mb-0.5">Mis reservas</h1>
+        <p className="section-sub">Tus horarios del día: tocá uno libre para marcarlo ocupado (o al revés). En dorado, los clientes que reservaron.</p>
       </div>
 
       <div className="flex items-center justify-between mb-4">

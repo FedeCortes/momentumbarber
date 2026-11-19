@@ -111,7 +111,7 @@ export default function BarberLayout() {
           {[
             { to: '/barber',         end: true,  icon: PlusCircle,    label: 'Registrar' },
             { to: '/barber/history', end: false, icon: ClipboardList, label: 'Mis registros' },
-            { to: '/barber/agenda',  end: false, icon: CalendarDays,  label: 'Agenda' },
+            { to: '/barber/agenda',  end: false, icon: CalendarDays,  label: 'Reservas' },
           ].map(({ to, end, icon: Icon, label }) => (
             <NavLink
               key={to}
