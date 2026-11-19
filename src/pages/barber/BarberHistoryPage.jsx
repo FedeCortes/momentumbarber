@@ -76,8 +76,14 @@ function DraftRow({ draft, paymentMethods, showDate, onDelete, barber, earnings 
         className="w-full flex items-center gap-3 px-4 py-4 text-left active:bg-dark-300/30 transition-colors"
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-base font-bold text-cream">${Number(draft.total).toLocaleString('es-AR')}</span>
+            {draft.booking_id && (
+              <span title="Turno reservado online: el cliente ya lo pagó"
+                className="inline-flex items-center gap-1 rounded-full bg-gold/12 border border-gold/30 text-gold font-bold uppercase tracking-wide text-[9px] px-1.5 py-px">
+                Turno reservado · pagado
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-2 gap-y-0">
             {showDate && (

@@ -10,6 +10,7 @@ import DateRangePicker, { dateRangeLabel } from '../../components/ui/DateRangePi
 import Modal from '../../components/ui/Modal'
 import { groupByPct, groupProductsByPct, groupDrinksByPct } from '../../lib/earnings'
 import { qAll } from '../../lib/query'
+import ClosingBookings from '../../components/booking/ClosingBookings'
 import toast from 'react-hot-toast'
 
 function fmt(n) { return Number(n || 0).toLocaleString('es-AR') }
@@ -203,6 +204,9 @@ export default function DayClosingPage() {
   // Consumo personal de barberos (precio especial) — entra al local, se descuenta a cada barbero
   const totalConsumption = barberPurchases.reduce((sum, p) => sum + Number(p.subtotal || 0), 0)
   const grandTotal     = sales.reduce((sum, s) => sum + saleTotal(s), 0) + totalConsumption
+  // Ventas que vinieron de un turno reservado online (ya pagadas por adelantado)
+  const reservedSales = sales.filter(x => x.booking_id)
+  const reservedTotal = reservedSales.reduce((a, x) => a + saleTotal(x), 0)
   const totalProducts  = sales.reduce((sum, s) => sum + Number(s.total_products || 0), 0)
   const totalDrinks    = sales.reduce((sum, s) => sum + Number(s.total_drinks || 0), 0)
   const totalTips      = sales.reduce((sum, s) => sum + Number(s.tip || 0), 0)
@@ -277,6 +281,9 @@ export default function DayClosingPage() {
 
     if (byPayment.length) {
       byPayment.forEach(p => lines.push(`   ${p.name}: $${fmt(p.total)}`))
+    }
+    if (reservedSales.length) {
+      lines.push(`   📅 Turnos reservados (ya pagados): ${reservedSales.length} · $${fmt(reservedTotal)}`)
     }
 
     if (byBarber.length) {
@@ -358,6 +365,13 @@ export default function DayClosingPage() {
       </div>
       <DateRangePicker from={from} to={to} onChange={(f, t) => { setFrom(f); setTo(t) }} />
 
+      {/* Turnos reservados online: detalle y carga a ventas (no aparece si no hay) */}
+      {!loading && !loadError && (
+        <div className="mt-5">
+          <ClosingBookings tenantId={tenant?.id} from={from} to={to} sales={sales} onChanged={load} />
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-16">
           <div className="w-6 h-6 border-2 border-gold border-t-transparent rounded-full animate-spin mt-6" />
@@ -384,6 +398,12 @@ export default function DayClosingPage() {
             <p className="text-cream/30 text-xs mt-1">
               <CountButton count={sales.length} onClick={() => setDetail({ title: 'Todas las ventas', sales, showBarber: true })} />
             </p>
+            {reservedSales.length > 0 && (
+              <p className="text-gold/80 text-xs mt-1.5">
+                Incluye <CountButton count={reservedSales.length} onClick={() => setDetail({ title: 'Turnos reservados', sales: reservedSales, showBarber: true })} />{' '}
+                de turnos reservados: ${fmt(reservedTotal)} cobrados por adelantado
+              </p>
+            )}
 
             {byPayment.length > 0 && (
               <div className="flex gap-3 pt-4 mt-4 border-t border-dark-400/40">

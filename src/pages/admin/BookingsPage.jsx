@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  CalendarCheck, ChevronLeft, ChevronRight, Check, X, MessageCircle, Receipt, Copy, ExternalLink,
+  ChevronLeft, ChevronRight, Check, X, MessageCircle, Receipt, Copy, ExternalLink,
   Plus, Trash2, Clock, Ban, Link2, AlertTriangle, CalendarDays,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -9,6 +9,8 @@ import { useAuth } from '../../context/AuthContext'
 import Modal from '../../components/ui/Modal'
 import Spinner from '../../components/ui/Spinner'
 import EmptyState from '../../components/ui/EmptyState'
+import DayAgenda from '../../components/booking/DayAgenda'
+import MoveBooking from '../../components/booking/MoveBooking'
 import {
   STATUS, WEEKDAYS, money, durationLabel, timeAR, longDateAR, dateKeyAR, addDaysKey, dayParts,
   fromLocalAR, receiptUrl, waTo,
@@ -83,12 +85,15 @@ function ListTab({ tenant, goSettings, goAgenda }) {
   const [pending, setPending]   = useState([])
   const [items, setItems]       = useState(null)
   const [barbers, setBarbers]   = useState({})
+  const [barberList, setBarberList] = useState([])
+  const [agendaKey, setAgendaKey] = useState(0)
   const [enabled, setEnabled]   = useState(true)
   const [bookable, setBookable] = useState(true)   // hay al menos un barbero con horario
   const [reload, setReload]     = useState(0)
   const [receipt, setReceipt]   = useState(null)    // { url, isPdf, booking }
   const [after, setAfter]       = useState(null)    // { booking, action } para avisar por WhatsApp
   const [busy, setBusy]         = useState(null)
+  const [moving, setMoving]     = useState(null)    // turno que se está moviendo
 
   useEffect(() => {
     let alive = true
@@ -100,7 +105,7 @@ function ListTab({ tenant, goSettings, goAgenda }) {
         .gte('ends_at', new Date(Date.now() - 6 * 3600e3).toISOString()).order('starts_at'),
       supabase.from('bookings').select('*').eq('tenant_id', tenant.id)
         .gte('starts_at', start).lt('starts_at', end).order('starts_at'),
-      supabase.from('barbers').select('id,name').eq('tenant_id', tenant.id),
+      supabase.from('barbers').select('id,name,photo_url,is_active').eq('tenant_id', tenant.id).order('name'),
       supabase.from('tenant_config').select('rsv_enabled').eq('tenant_id', tenant.id).maybeSingle(),
       supabase.rpc('rsv_shop', { p_slug: tenant.slug }),
     ]).then(([p, d, b, c, shop]) => {
@@ -109,6 +114,7 @@ function ListTab({ tenant, goSettings, goAgenda }) {
       setPending(p.data || [])
       setItems(d.data || [])
       setBarbers(Object.fromEntries((b.data || []).map(x => [x.id, x.name])))
+      setBarberList((b.data || []).filter(x => x.is_active !== false))
       setEnabled(!!c.data?.rsv_enabled)
       if (!shop.error && shop.data) setBookable((shop.data.barbers || []).length > 0 && (shop.data.services || []).length > 0)
     })
@@ -116,7 +122,7 @@ function ListTab({ tenant, goSettings, goAgenda }) {
   }, [tenant.id, day, reload])
 
   async function openReceipt(bk) {
-    if (!bk.receipt_path) return toast.error('Este turno no tiene comprobante')
+    if (!bk.receipt_path) { setReceipt({ url: null, isPdf: false, booking: bk }); return }
     try {
       const url = await receiptUrl(bk.receipt_path)
       setReceipt({ url, isPdf: /\.pdf$/i.test(bk.receipt_path), booking: bk })
@@ -133,6 +139,7 @@ function ListTab({ tenant, goSettings, goAgenda }) {
     toast.success(status === 'confirmed' ? 'Turno confirmado' : status === 'rejected' ? 'Turno rechazado' : 'Turno cancelado')
     if (bk.customer_phone) setAfter({ booking: { ...bk, ...patch }, action: status })
     setReload(r => r + 1)
+    setAgendaKey(k => k + 1)
   }
 
   function msgFor(bk, action) {
@@ -211,47 +218,47 @@ function ListTab({ tenant, goSettings, goAgenda }) {
       </div>
 
       {!items && <div className="py-12 flex justify-center"><Spinner /></div>}
-      {items && !items.length && (
-        <EmptyState icon={CalendarCheck} title="Sin turnos" description="Cuando alguien reserve para este día, aparece acá." />
+      {items && (
+        <DayAgenda tenantId={tenant.id} barbers={barberList} day={day} refreshKey={agendaKey + reload}
+          onOpenBooking={openReceipt} />
       )}
-      {items && items.length > 0 && (
-        <div className="flex flex-col gap-2">
-          {items.map(bk => {
-            const st = STATUS[bk.status]
-            const off = bk.status === 'cancelled' || bk.status === 'rejected'
-            return (
-              <div key={bk.id} className={`card !p-3.5 flex items-center gap-3.5 ${off ? 'opacity-55' : ''}`}>
-                <div className="w-14 text-center shrink-0">
-                  <p className="text-gold font-bold text-lg leading-none">{timeAR(bk.starts_at)}</p>
-                  <p className="text-cream/35 text-[10px] mt-1">{timeAR(bk.ends_at)}</p>
-                </div>
-                <div className="flex-1 min-w-0 border-l border-dark-400/40 pl-3.5">
-                  <p className="text-cream font-semibold text-sm truncate">{bk.customer_name}</p>
-                  <p className="text-cream/50 text-xs truncate">{bk.service_name} · {barbers[bk.barber_id] || '—'} · {money(bk.price)}</p>
-                  <span className={`${st?.cls} mt-1.5`}>{st?.short}{bk.cancelled_by === 'customer' ? ' por el cliente' : ''}</span>
-                </div>
-                <div className="flex flex-col gap-1 shrink-0">
-                  {bk.customer_phone && (
-                    <a href={waTo(bk.customer_phone)} target="_blank" rel="noreferrer" className="btn-ghost !p-2" title="WhatsApp"><MessageCircle size={16} /></a>
-                  )}
-                  {bk.receipt_path && (
-                    <button onClick={() => openReceipt(bk)} className="btn-ghost !p-2" title="Comprobante"><Receipt size={16} /></button>
-                  )}
-                </div>
+
+      {items && items.some(bk => bk.status === 'cancelled' || bk.status === 'rejected') && (
+        <div className="mt-6">
+          <p className="label">Cancelados y rechazados</p>
+          <div className="card-flat !p-0 divide-y divide-dark-400/30">
+            {items.filter(bk => bk.status === 'cancelled' || bk.status === 'rejected').map(bk => (
+              <div key={bk.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+                <b className="text-cream/60 w-12 shrink-0">{timeAR(bk.starts_at)}</b>
+                <span className="text-cream/60 truncate flex-1">{bk.customer_name} · {bk.service_name} · {barbers[bk.barber_id] || '—'}</span>
+                <span className={`${STATUS[bk.status]?.cls} shrink-0`}>{STATUS[bk.status]?.short}{bk.cancelled_by === 'customer' ? ' x cliente' : ''}</span>
+                {bk.customer_phone && (
+                  <a href={waTo(bk.customer_phone)} target="_blank" rel="noreferrer" className="btn-ghost !p-1.5 shrink-0" title="WhatsApp"><MessageCircle size={14} /></a>
+                )}
               </div>
-            )
-          })}
+            ))}
+          </div>
         </div>
       )}
 
-      <Modal open={!!receipt} onClose={() => setReceipt(null)} title="Comprobante">
+      <Modal open={!!receipt} onClose={() => setReceipt(null)} title="Turno reservado">
         {receipt && (
           <>
-            <div className="text-sm text-cream/70 mb-4">
-              <p><b className="text-cream">{receipt.booking.customer_name}</b> · {money(receipt.booking.price)}</p>
-              <p>{longDateAR(receipt.booking.starts_at)} · {timeAR(receipt.booking.starts_at)} · {receipt.booking.service_name}</p>
+            <div className="text-sm text-cream/70 mb-4 flex flex-col gap-1">
+              <div className="flex items-center justify-between gap-3">
+                <p><b className="text-cream text-base">{receipt.booking.customer_name}</b></p>
+                <span className={STATUS[receipt.booking.status]?.cls}>{STATUS[receipt.booking.status]?.short}</span>
+              </div>
+              <p>{longDateAR(receipt.booking.starts_at)} · <b className="text-cream">{timeAR(receipt.booking.starts_at)} hs</b></p>
+              <p>{receipt.booking.service_name} · con {barbers[receipt.booking.barber_id] || '—'} · <b className="text-gold">{money(receipt.booking.price)}</b> pagado por adelantado</p>
+              {receipt.booking.customer_phone && (
+                <a href={waTo(receipt.booking.customer_phone)} target="_blank" rel="noreferrer"
+                   className="text-gold text-xs font-semibold flex items-center gap-1 mt-1"><MessageCircle size={13} /> {receipt.booking.customer_phone}</a>
+              )}
             </div>
-            {receipt.isPdf ? (
+            {!receipt.url ? (
+              <p className="text-cream/45 text-sm mb-4 card-flat !p-3">Sin comprobante adjunto.</p>
+            ) : receipt.isPdf ? (
               <a href={receipt.url} target="_blank" rel="noreferrer" className="btn-outline-gold w-full flex items-center justify-center gap-2 mb-4">
                 <ExternalLink size={15} /> Abrir PDF
               </a>
@@ -274,9 +281,21 @@ function ListTab({ tenant, goSettings, goAgenda }) {
             ) : receipt.booking.status === 'confirmed' && new Date(receipt.booking.starts_at) > new Date() ? (
               <button onClick={() => setStatus(receipt.booking, 'cancelled')} className="btn-ghost w-full text-red-400/80">Cancelar este turno</button>
             ) : null}
+            {['pending', 'confirmed'].includes(receipt.booking.status) && dateKeyAR(receipt.booking.starts_at) >= dateKeyAR() && (
+              <button onClick={() => { setMoving(receipt.booking); setReceipt(null) }}
+                className="btn-outline-gold w-full mt-2 flex items-center justify-center gap-1.5">
+                <CalendarDays size={15} /> Mover turno (día, hora o barbero)
+              </button>
+            )}
           </>
         )}
       </Modal>
+
+      {moving && (
+        <MoveBooking booking={moving} tenantSlug={tenant.slug} tenantName={tenant.name} barbers={barberList}
+          onClose={() => setMoving(null)}
+          onMoved={() => { setReload(r => r + 1); setAgendaKey(k => k + 1) }} />
+      )}
 
       <Modal open={!!after} onClose={() => setAfter(null)} title="¿Le avisás?" size="sm">
         {after && (
@@ -590,17 +609,25 @@ function SettingsTab({ tenant }) {
   const [services, setServices] = useState([])
   const [saving, setSaving]   = useState(false)
   const [dirty, setDirty]     = useState(false)
+  const [onlinePriceReady, setOnlinePriceReady] = useState(true)
 
   useEffect(() => {
     let alive = true
     Promise.all([
       supabase.from('tenant_config').select(Object.keys(EMPTY).join(',')).eq('tenant_id', tenant.id).maybeSingle(),
-      supabase.from('services').select('id,name,price,duration_min,is_active').eq('tenant_id', tenant.id).eq('is_active', true).order('price'),
+      // booking_price viene con la migración v2: si todavía no corrió, se pide sin esa columna
+      supabase.from('services').select('id,name,price,duration_min,booking_price,is_active').eq('tenant_id', tenant.id).eq('is_active', true).order('price')
+        .then(r => r.error
+          ? supabase.from('services').select('id,name,price,duration_min,is_active').eq('tenant_id', tenant.id).eq('is_active', true).order('price')
+              .then(r2 => ({ ...r2, noOnlinePrice: true }))
+          : r),
     ]).then(([c, s]) => {
       if (!alive) return
       const base = { ...EMPTY }
       for (const k in base) if (c.data && c.data[k] != null) base[k] = c.data[k]
-      setCfg(base); setServices(s.data || [])
+      setCfg(base)
+      setServices((s.data || []).map(x => ({ ...x, _online: x.booking_price != null ? String(Math.round(x.booking_price)) : '' })))
+      setOnlinePriceReady(!s.noOnlinePrice)
     })
     return () => { alive = false }
   }, [tenant.id])
@@ -608,6 +635,7 @@ function SettingsTab({ tenant }) {
   const link = bookingLink(tenant.slug)
   const set = (k, v) => { setCfg(c => ({ ...c, [k]: v })); setDirty(true) }
   const setDur = (id, v) => { setServices(l => l.map(s => s.id === id ? { ...s, duration_min: v, _dirty: true } : s)); setDirty(true) }
+  const setOnline = (id, v) => { setServices(l => l.map(s => s.id === id ? { ...s, _online: v.replace(/\D/g, ''), _dirty: true } : s)); setDirty(true) }
 
   async function save() {
     if (cfg.rsv_pay_link && !/^https?:\/\//i.test(cfg.rsv_pay_link.trim())) return toast.error('El link de pago tiene que empezar con https://')
@@ -620,7 +648,9 @@ function SettingsTab({ tenant }) {
     const { error } = await supabase.from('tenant_config').upsert(payload, { onConflict: 'tenant_id' })
     let svcErr = null
     for (const s of services.filter(x => x._dirty)) {
-      const r = await supabase.from('services').update({ duration_min: s.duration_min }).eq('id', s.id)
+      const patch = { duration_min: s.duration_min }
+      if (onlinePriceReady) patch.booking_price = s._online === '' ? null : Number(s._online)
+      const r = await supabase.from('services').update(patch).eq('id', s.id)
       if (r.error) svcErr = r.error
     }
     setSaving(false)
@@ -704,21 +734,46 @@ function SettingsTab({ tenant }) {
       </div>
 
       <div className="card !p-4">
-        <p className="text-cream font-semibold mb-1">Duración de cada servicio</p>
-        <p className="text-cream/45 text-xs mb-3">Con esto se calcula cuánto ocupa cada turno en la agenda.</p>
+        <p className="text-cream font-semibold mb-1">Servicios online</p>
+        <p className="text-cream/45 text-xs mb-3">
+          Cuánto dura cada turno y cuánto se cobra al reservar. Si dejás el precio online vacío, se cobra lo mismo que en el local.
+        </p>
+        {!onlinePriceReady && (
+          <p className="text-amber-500 text-xs mb-3">Para poner un precio online distinto falta correr la migración «reservas v2» en Supabase.</p>
+        )}
         {!services.length && <p className="text-cream/40 text-sm">Cargá servicios en Configuración.</p>}
+        {services.length > 0 && (
+          <div className="hidden sm:flex items-center gap-3 pb-1.5 text-[10px] font-bold uppercase tracking-widest text-cream/35">
+            <span className="flex-1">Servicio</span>
+            <span className="w-[104px]">Duración</span>
+            <span className="w-[120px]">Precio online</span>
+          </div>
+        )}
         <div className="flex flex-col divide-y divide-dark-400/30">
-          {services.map(s => (
-            <div key={s.id} className="flex items-center gap-3 py-2.5">
-              <div className="flex-1 min-w-0">
-                <p className="text-cream text-sm font-medium truncate">{s.name}</p>
-                <p className="text-cream/40 text-xs">{money(s.price)}</p>
+          {services.map(s => {
+            const differs = s._online !== '' && Number(s._online) !== Number(s.price)
+            return (
+              <div key={s.id} className="flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-2 py-3">
+                <div className="flex-1 min-w-[140px]">
+                  <p className="text-cream text-sm font-medium truncate">{s.name}</p>
+                  <p className="text-cream/40 text-xs">
+                    En el local {money(s.price)}
+                    {differs && <> · <span className="text-gold font-semibold">online {money(s._online)}</span></>}
+                  </p>
+                </div>
+                <select value={s.duration_min || 30} onChange={e => setDur(s.id, Number(e.target.value))}
+                  className="input-dark !w-[104px] !py-2 !px-3" aria-label={`Duración de ${s.name}`}>
+                  {[...new Set([...DURATIONS, s.duration_min || 30])].sort((a, b) => a - b).map(v => <option key={v} value={v}>{durationLabel(v)}</option>)}
+                </select>
+                <div className={`flex items-center w-[120px] rounded-xl border bg-dark-300/60 transition-colors ${differs ? 'border-gold/50' : 'border-dark-400/70'} ${onlinePriceReady ? '' : 'opacity-40'}`}>
+                  <span className="pl-3 text-cream/40 text-sm">$</span>
+                  <input value={s._online} onChange={e => setOnline(s.id, e.target.value)} disabled={!onlinePriceReady}
+                    inputMode="numeric" placeholder={String(Math.round(s.price))} aria-label={`Precio online de ${s.name}`}
+                    className="w-full bg-transparent border-0 focus:ring-0 text-cream text-sm py-2 pl-1.5 pr-3 placeholder:text-cream/30" />
+                </div>
               </div>
-              <select value={s.duration_min || 30} onChange={e => setDur(s.id, Number(e.target.value))} className="input-dark !w-auto !py-2 !px-3">
-                {[...new Set([...DURATIONS, s.duration_min || 30])].sort((a, b) => a - b).map(v => <option key={v} value={v}>{durationLabel(v)}</option>)}
-              </select>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

@@ -11,7 +11,7 @@ import { useTheme } from '../../context/ThemeContext'
 import { applyBrandIcon } from '../../lib/brand'
 import Spinner from '../../components/ui/Spinner'
 import {
-  fetchShop, fetchDays, fetchSlots, login, fetchMe, rename, cancelBooking, book, uploadReceipt,
+  fetchShop, fetchDays, fetchGrid, login, fetchMe, rename, cancelBooking, book, uploadReceipt,
   loadClient, saveClient, money, durationLabel, timeAR, longDateAR, dayParts, dateKeyAR,
   STATUS, waTo,
 } from '../../lib/booking'
@@ -389,9 +389,14 @@ function WhenStep({ slug, shop, service, barber, onPick, onBack }) {
     fetchDays(slug, service.id, barber?.id)
       .then(d => {
         if (!alive) return
-        const list = (d || []).map(x => ({ key: typeof x.day === 'string' ? x.day.slice(0, 10) : dateKeyAR(x.day), free: x.free }))
+        // total (v2): 0 = no atiende ese día · free 0 con total > 0 = agenda llena
+        const list = (d || []).map(x => ({
+          key: typeof x.day === 'string' ? x.day.slice(0, 10) : dateKeyAR(x.day),
+          free: x.free,
+          total: x.total == null ? null : x.total,
+        }))
         setDays(list)
-        setDay(cur => (cur && list.some(x => x.key === cur && x.free > 0)) ? cur : (list.find(x => x.free > 0)?.key || null))
+        setDay(cur => (cur && list.some(x => x.key === cur && (x.free > 0 || x.total > 0))) ? cur : (list.find(x => x.free > 0)?.key || null))
       })
       .catch(() => alive && setErr(true))
     return () => { alive = false }
@@ -401,11 +406,16 @@ function WhenStep({ slug, shop, service, barber, onPick, onBack }) {
     if (!day) { setSlots(null); return }
     let alive = true
     setSlots(null)
-    fetchSlots(slug, service.id, barber?.id, day)
+    fetchGrid(slug, service.id, barber?.id, day)
       .then(rows => {
         if (!alive) return
-        const uniq = [...new Set((rows || []).map(r => new Date(r.starts_at).toISOString()))]
-        setSlots(uniq)
+        // Un horario está libre si al menos un barbero (de los elegibles) lo tiene libre
+        const map = new Map()
+        for (const r of rows || []) {
+          const iso = new Date(r.starts_at).toISOString()
+          map.set(iso, map.get(iso) || !!r.free)
+        }
+        setSlots([...map.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([iso, free]) => ({ iso, free })))
       })
       .catch(() => alive && setErr(true))
     return () => { alive = false }
@@ -418,14 +428,16 @@ function WhenStep({ slug, shop, service, barber, onPick, onBack }) {
       { label: 'Tarde', items: [] },
       { label: 'Noche', items: [] },
     ]
-    for (const iso of slots) {
-      const h = Number(timeAR(iso).slice(0, 2))
-      g[h < 13 ? 0 : h < 19 ? 1 : 2].items.push(iso)
+    for (const sl of slots) {
+      const h = Number(timeAR(sl.iso).slice(0, 2))
+      g[h < 13 ? 0 : h < 19 ? 1 : 2].items.push(sl)
     }
     return g.filter(x => x.items.length)
   }, [slots])
 
   const noneAtAll = days && !days.some(d => d.free > 0)
+  const someWork  = days && days.some(d => (d.total ?? 0) > 0)
+  const dayFull   = slots && slots.length > 0 && !slots.some(x => x.free)
 
   return (
     <>
@@ -443,7 +455,7 @@ function WhenStep({ slug, shop, service, barber, onPick, onBack }) {
       {!err && days && noneAtAll && (
         <div className="card text-center py-10">
           <CalendarDays className="mx-auto text-gold mb-3" size={26} />
-          <p className="text-cream font-semibold mb-1">No quedan turnos libres</p>
+          <p className="text-cream font-semibold mb-1">{someWork ? 'Agenda llena' : 'No quedan turnos libres'}</p>
           <p className="text-cream/45 text-sm mb-5">{barber ? 'Probá con otro barbero o' : 'Probá'} más adelante.</p>
           {shop.whatsapp && (
             <a href={waTo(shop.whatsapp, `Hola! Busco turno para ${service.name}`)} target="_blank" rel="noreferrer"
@@ -458,16 +470,21 @@ function WhenStep({ slug, shop, service, barber, onPick, onBack }) {
             {days.map(d => {
               const p = dayParts(d.key)
               const active = d.key === day
-              const full = d.free === 0
+              // closed: no atiende · full: atiende pero no queda lugar (se puede abrir para ver)
+              const closed = d.total === 0 || (d.total == null && d.free === 0)
+              const full   = !closed && d.free === 0
               return (
-                <button key={d.key} disabled={full} onClick={() => setDay(d.key)}
+                <button key={d.key} disabled={closed} onClick={() => setDay(d.key)}
                   className={`snap-start shrink-0 w-[62px] py-2.5 rounded-2xl border flex flex-col items-center transition-colors duration-100 ${
-                    active ? 'bg-gold border-gold text-ink shadow-gold-md'
-                    : full ? 'border-dark-400/30 text-cream/20 cursor-not-allowed'
+                    active ? (full ? 'bg-red-500/15 border-red-500/50 text-red-400' : 'bg-gold border-gold text-ink shadow-gold-md')
+                    : closed ? 'border-dark-400/30 text-cream/20 cursor-not-allowed'
+                    : full ? 'border-red-500/25 bg-red-500/[0.05] text-red-400/70 hover:border-red-500/45'
                     : 'border-dark-400/60 bg-dark-200 text-cream hover:border-gold/50'}`}>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${active ? 'text-ink/70' : full ? '' : 'text-cream/45'}`}>{p.dow}</span>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${active && !full ? 'text-ink/70' : closed || full ? '' : 'text-cream/45'}`}>{p.dow}</span>
                   <span className="text-xl font-bold leading-tight">{p.day}</span>
-                  <span className={`text-[10px] font-semibold ${active ? 'text-ink/70' : full ? '' : 'text-cream/40'}`}>{full ? 'sin lugar' : p.month}</span>
+                  <span className={`text-[10px] font-semibold ${active && !full ? 'text-ink/70' : closed || full ? '' : 'text-cream/40'}`}>
+                    {closed ? 'cerrado' : full ? 'lleno' : p.month}
+                  </span>
                 </button>
               )
             })}
@@ -477,15 +494,33 @@ function WhenStep({ slug, shop, service, barber, onPick, onBack }) {
 
           {!slots && <div className="py-10 flex justify-center"><Spinner /></div>}
           {slots && !slots.length && <p className="text-cream/45 text-sm py-6 text-center">Ese día ya no tiene lugar.</p>}
+          {dayFull && (
+            <div className="mb-4 px-4 py-3 rounded-xl border border-red-500/30 bg-red-500/[0.07] flex items-center gap-2.5">
+              <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+              <p className="text-sm text-cream/80"><b className="text-red-400">Agenda llena</b> este día. Elegí otro día{barber ? ' u otro barbero' : ''}.</p>
+            </div>
+          )}
+          {slots && slots.length > 0 && !dayFull && slots.some(x => !x.free) && (
+            <div className="flex items-center gap-4 mb-3 text-[11px] text-cream/45">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[4px] border border-dark-400 bg-dark-200" /> Libre</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-[4px] bg-red-500/40" /> Ocupado</span>
+            </div>
+          )}
           {slots && groups.map(g => (
             <div key={g.label} className="mb-5">
               <p className="label !mb-2.5">{g.label}</p>
               <div className="grid grid-cols-4 gap-2">
-                {g.items.map(iso => (
-                  <button key={iso} onClick={() => onPick(iso)}
+                {g.items.map(sl => sl.free ? (
+                  <button key={sl.iso} onClick={() => onPick(sl.iso)}
                     className="py-2.5 rounded-xl border border-dark-400/60 bg-dark-200 text-cream text-sm font-semibold hover:border-gold hover:text-gold active:scale-[0.97] transition-all">
-                    {timeAR(iso)}
+                    {timeAR(sl.iso)}
                   </button>
+                ) : (
+                  <div key={sl.iso} aria-label={`${timeAR(sl.iso)} ocupado`}
+                    className="py-1.5 rounded-xl border border-red-500/25 bg-red-500/[0.08] text-center select-none">
+                    <span className="block text-sm font-semibold text-red-400/60 line-through decoration-red-400/40">{timeAR(sl.iso)}</span>
+                    <span className="block text-[9px] font-bold uppercase tracking-wider text-red-400/70 -mt-0.5">Ocupado</span>
+                  </div>
                 ))}
               </div>
             </div>

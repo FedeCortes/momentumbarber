@@ -24,6 +24,7 @@ import BookingPage from './pages/booking/BookingPage'
 
 import BarberDraftPage from './pages/barber/BarberDraftPage'
 import BarberHistoryPage from './pages/barber/BarberHistoryPage'
+import BarberAgendaPage from './pages/barber/BarberAgendaPage'
 
 import ManualPage from './pages/ManualPage'
 
@@ -113,6 +114,7 @@ export default function App() {
       <Route path="/barber" element={<RequireBarber><BarberLayout /></RequireBarber>}>
         <Route index element={<BarberDraftPage />} />
         <Route path="history" element={<BarberHistoryPage />} />
+        <Route path="agenda" element={<BarberAgendaPage />} />
         <Route path="manual" element={<ManualPage compact />} />
       </Route>
 

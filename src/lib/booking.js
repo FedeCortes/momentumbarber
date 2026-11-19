@@ -94,6 +94,17 @@ export const fetchDays  = (slug, serviceId, barberId) =>
   rpc('rsv_days', { p_slug: slug, p_service: serviceId, p_barber: barberId || null })
 export const fetchSlots = (slug, serviceId, barberId, dateKey) =>
   rpc('rsv_slots', { p_slug: slug, p_service: serviceId, p_barber: barberId || null, p_date: dateKey })
+/**
+ * Grilla del día con libres y ocupados: [{ starts_at, barber_id, free }].
+ * Si la migración v2 no corrió todavía, cae a los libres de siempre.
+ */
+export async function fetchGrid(slug, serviceId, barberId, dateKey) {
+  const args = { p_slug: slug, p_service: serviceId, p_barber: barberId || null, p_date: dateKey }
+  const { data, error } = await supabase.rpc('rsv_grid', args)
+  if (!error) return data || []
+  const rows = await fetchSlots(slug, serviceId, barberId, dateKey)
+  return (rows || []).map(r => ({ ...r, free: true }))
+}
 export const login      = (slug, phone, name) =>
   rpc('rsv_login', { p_slug: slug, p_phone: phone, p_name: name || null })
 export const fetchMe    = token => rpc('rsv_me', { p_token: token })

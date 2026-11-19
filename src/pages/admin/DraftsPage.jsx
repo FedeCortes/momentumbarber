@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileText, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Receipt, Plus, Minus, Pencil, Trash2, ClipboardList, ArrowRightLeft } from 'lucide-react'
+import { FileText, Check, ChevronDown, ChevronUp, AlertTriangle, CheckCircle2, Receipt, Plus, Minus, Pencil, Trash2, ClipboardList, ArrowRightLeft, CalendarCheck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import EmptyState from '../../components/ui/EmptyState'
@@ -20,6 +20,16 @@ import { es } from 'date-fns/locale'
 import { Link } from 'react-router-dom'
 
 const rowTotal = r => Number(r.total || 0) + Number(r.surcharge_amt || 0)
+
+// Marca de «vino de un turno reservado» (pagado por adelantado en la web)
+function BookingChip({ compact }) {
+  return (
+    <span title="Turno reservado online: el cliente ya lo pagó por adelantado"
+      className={`inline-flex items-center gap-1 rounded-full bg-gold/12 border border-gold/30 text-gold font-bold uppercase tracking-wide ${compact ? 'text-[8.5px] px-1.5 py-px' : 'text-[10px] px-2 py-0.5'}`}>
+      <CalendarCheck size={compact ? 9 : 10} /> Turno reservado · pagado
+    </span>
+  )
+}
 
 // Línea de detalle: muestra con qué % se pagó cada servicio
 function ItemLine({ it, barber }) {
@@ -78,6 +88,11 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
     try {
       const { data: draftItems } = await supabase.from('draft_items').select('*').eq('draft_id', draft.id)
       const barber = barbers.find(b => b.id === draft.barber_id)
+      let bookingCustomer = null
+      if (draft.booking_id) {
+        const { data: bk } = await supabase.from('bookings').select('customer_id').eq('id', draft.booking_id).maybeSingle()
+        bookingCustomer = bk?.customer_id || null
+      }
       const tipAmt        = Number(draft.tip) || 0
       const totalServices = Number(draft.total_services) || 0
       const totalProducts = Number(draft.total_products) || 0
@@ -110,9 +125,14 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
         shop_earnings:     shopEarnings,
         surcharge_amt:     draftSurcharge,
         sale_date:         draft.draft_date,
+        // Turno reservado: la venta queda atada al turno (no se puede cargar dos veces) y con su cliente
+        ...(draft.booking_id ? { booking_id: draft.booking_id, ...(bookingCustomer ? { customer_id: bookingCustomer } : {}) } : {}),
       }).select().single()
 
-      if (saleErr) throw saleErr
+      if (saleErr) {
+        if (/sales_booking_uq|duplicate key/i.test(saleErr.message || '')) throw new Error('Ese turno reservado ya está cargado como venta oficial')
+        throw saleErr
+      }
 
       if (draftItems?.length) {
         await supabase.from('sale_items').insert(
@@ -252,8 +272,9 @@ function DraftRow({ draft, barbers, paymentMethods, barberSvcs, barberPrds, barb
       <div className={`border rounded-xl overflow-hidden ${compact ? 'border-gold/25 bg-gold/[0.04]' : 'border-dark-400'}`}>
         <div className={`flex items-center gap-2 ${compact ? 'px-2.5 py-2' : 'px-4 py-3'}`}>
           <button onClick={toggle} className="flex-1 text-left min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className={`font-display text-gold ${compact ? 'text-[15px]' : 'text-base'}`}>${rowTotal(draft).toLocaleString('es-AR')}</span>
+              {draft.booking_id && <BookingChip compact={compact} />}
             </div>
             <div className={`flex mt-0.5 flex-wrap ${compact ? 'gap-x-2 gap-y-0.5' : 'gap-3'}`}>
               {showDate && <span className={`text-gold/50 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(draft.draft_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}
@@ -648,8 +669,9 @@ function SaleRow({ sale, barbers, paymentMethods, barberSvcs, barberPrds, barber
       <div className={`border rounded-xl overflow-hidden ${compact ? 'border-dark-400/70 bg-dark-300/25' : 'border-dark-400'}`}>
         <div className={`flex items-center gap-2 ${compact ? 'px-2.5 py-2' : 'px-4 py-3'}`}>
           <button onClick={toggle} className="flex-1 text-left min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className={`font-display text-cream ${compact ? 'text-[15px]' : 'text-base'}`}>${rowTotal(sale).toLocaleString('es-AR')}</span>
+              {sale.booking_id && <BookingChip compact={compact} />}
             </div>
             <div className={`flex mt-0.5 flex-wrap ${compact ? 'gap-x-2 gap-y-0.5' : 'gap-3'}`}>
               {showDate && <span className={`text-gold/50 ${compact ? 'text-[10px]' : 'text-xs'}`}>{format(new Date(sale.sale_date + 'T12:00:00'), "d MMM", { locale: es })}</span>}

@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, NavLink } from 'react-router-dom'
-import { LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle } from 'lucide-react'
+import { LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle, CalendarDays } from 'lucide-react'
 import BrandMark from '../ui/BrandMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -111,6 +111,7 @@ export default function BarberLayout() {
           {[
             { to: '/barber',         end: true,  icon: PlusCircle,    label: 'Registrar' },
             { to: '/barber/history', end: false, icon: ClipboardList, label: 'Mis registros' },
+            { to: '/barber/agenda',  end: false, icon: CalendarDays,  label: 'Agenda' },
           ].map(({ to, end, icon: Icon, label }) => (
             <NavLink
               key={to}
