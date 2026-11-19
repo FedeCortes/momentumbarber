@@ -68,7 +68,7 @@ export default function BookingsPage() {
 
       {ready === null && <div className="py-16 flex justify-center"><Spinner /></div>}
       {ready === false && <MissingMigration />}
-      {ready && tab === 'list' && <ListTab tenant={tenant} goSettings={() => setTab('settings')} />}
+      {ready && tab === 'list' && <ListTab tenant={tenant} goSettings={() => setTab('settings')} goAgenda={() => setTab('agenda')} />}
       {ready && tab === 'agenda' && <AgendaTab tenant={tenant} />}
       {ready && tab === 'settings' && <SettingsTab tenant={tenant} />}
     </div>
@@ -78,12 +78,13 @@ export default function BookingsPage() {
 // ═════════════════════════════════════════════════════════════
 // TURNOS
 // ═════════════════════════════════════════════════════════════
-function ListTab({ tenant, goSettings }) {
+function ListTab({ tenant, goSettings, goAgenda }) {
   const [day, setDay]           = useState(dateKeyAR())
   const [pending, setPending]   = useState([])
   const [items, setItems]       = useState(null)
   const [barbers, setBarbers]   = useState({})
   const [enabled, setEnabled]   = useState(true)
+  const [bookable, setBookable] = useState(true)   // hay al menos un barbero con horario
   const [reload, setReload]     = useState(0)
   const [receipt, setReceipt]   = useState(null)    // { url, isPdf, booking }
   const [after, setAfter]       = useState(null)    // { booking, action } para avisar por WhatsApp
@@ -101,13 +102,15 @@ function ListTab({ tenant, goSettings }) {
         .gte('starts_at', start).lt('starts_at', end).order('starts_at'),
       supabase.from('barbers').select('id,name').eq('tenant_id', tenant.id),
       supabase.from('tenant_config').select('rsv_enabled').eq('tenant_id', tenant.id).maybeSingle(),
-    ]).then(([p, d, b, c]) => {
+      supabase.rpc('rsv_shop', { p_slug: tenant.slug }),
+    ]).then(([p, d, b, c, shop]) => {
       if (!alive) return
       if (p.error || d.error) { toast.error('No se pudieron cargar los turnos'); setItems([]); return }
       setPending(p.data || [])
       setItems(d.data || [])
       setBarbers(Object.fromEntries((b.data || []).map(x => [x.id, x.name])))
       setEnabled(!!c.data?.rsv_enabled)
+      if (!shop.error && shop.data) setBookable((shop.data.barbers || []).length > 0 && (shop.data.services || []).length > 0)
     })
     return () => { alive = false }
   }, [tenant.id, day, reload])
@@ -149,6 +152,14 @@ function ListTab({ tenant, goSettings }) {
         <button onClick={goSettings} className="w-full mb-5 card !p-4 flex items-center gap-3 text-left border-amber-500/30 hover:border-amber-500/50">
           <AlertTriangle className="text-amber-500 shrink-0" size={18} />
           <span className="text-sm text-cream/75 flex-1">Las reservas online están <b>apagadas</b>. Activalas y cargá los datos de pago en Ajustes.</span>
+          <ChevronRight size={16} className="text-cream/30" />
+        </button>
+      )}
+
+      {enabled && !bookable && (
+        <button onClick={goAgenda} className="w-full mb-5 card !p-4 flex items-center gap-3 text-left border-amber-500/30 hover:border-amber-500/50">
+          <AlertTriangle className="text-amber-500 shrink-0" size={18} />
+          <span className="text-sm text-cream/75 flex-1">Los clientes todavía no ven turnos: <b>cargale el horario a al menos un barbero</b> en Agenda.</span>
           <ChevronRight size={16} className="text-cream/30" />
         </button>
       )}
