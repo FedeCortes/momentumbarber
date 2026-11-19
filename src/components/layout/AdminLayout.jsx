@@ -5,7 +5,7 @@ import {
   ChevronDown, Sun, MoreHorizontal, HelpCircle, Contact, CalendarCheck
 } from 'lucide-react'
 import { useState } from 'react'
-import BarberPoleMark from '../ui/BarberPoleMark'
+import BrandMark from '../ui/BrandMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -68,7 +68,7 @@ function ThemeToggle() {
 }
 
 export default function AdminLayout() {
-  const { signOut, tenant, isAdmin, isBarber, clearBarberSession, barberSession } = useAuth()
+  const { signOut, tenant, isAdmin, isBarber, clearBarberSession, barberSession, brandLogo } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
@@ -96,7 +96,7 @@ export default function AdminLayout() {
       <header className="bg-dark-200 border-b border-dark-400/40 px-4 py-3 flex items-center justify-between sticky top-0 z-30"
               style={{ boxShadow: 'var(--sh-card)' }}>
         <div className="flex items-center gap-3">
-          <BarberPoleMark size={32} className="shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
+          <BrandMark logoUrl={brandLogo} size={32} className="shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           <div>
             <p className="font-display text-sm font-semibold text-cream leading-tight">{tenant?.name || 'Momentum'}</p>
             <p className="text-[10px] text-cream/40 uppercase tracking-wider font-medium">{role}</p>

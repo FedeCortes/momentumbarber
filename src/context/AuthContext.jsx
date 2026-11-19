@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { applyBrandIcon } from '../lib/brand'
 
 const AuthContext = createContext(null)
 
@@ -9,6 +10,7 @@ export function AuthProvider({ children }) {
   const [tenant, setTenant] = useState(null)        // row from tenants table
   const [tenantConfig, setTenantConfig] = useState(null) // row from tenant_config (ajustes)
   const [barberSession, setBarberSession] = useState(null) // { barber: {...} }
+  const [brandLogo, setBrandLogo] = useState(null)   // logo propio de la barbería (tenant_config.logo_url)
   const [loading, setLoading] = useState(true)
   const loadedUserRef = useRef(null)   // evita recargar el perfil en cada TOKEN_REFRESHED
 
@@ -72,6 +74,23 @@ export function AuthProvider({ children }) {
     })()
     return () => { active = false }
   }, [profile?.tenant_id])
+
+  // Logo de la barbería aparte: si la migración del logo no corrió, se ignora
+  useEffect(() => {
+    const tid = profile?.tenant_id
+    if (!tid) { setBrandLogo(null); return }
+    let active = true
+    supabase.from('tenant_config').select('logo_url').eq('tenant_id', tid).maybeSingle()
+      .then(({ data, error }) => { if (active && !error) setBrandLogo(data?.logo_url || null) })
+      .catch(() => {})
+    return () => { active = false }
+  }, [profile?.tenant_id])
+
+  // Ícono de la pestaña con el logo (la página pública de reservas pone el suyo)
+  useEffect(() => {
+    if (location.pathname.startsWith('/reservar/')) return
+    applyBrandIcon(brandLogo)
+  }, [brandLogo])
 
   async function loadProfile(userId, { force = false } = {}) {
     // Ya está cargado este usuario → no re-consultar (p.ej. en TOKEN_REFRESHED)
@@ -178,7 +197,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      session, profile, tenant, tenantConfig, barberSession,
+      session, profile, tenant, tenantConfig, barberSession, brandLogo, setBrandLogo,
       loading, isRoot, isAdmin, isBarber, stockEnabled,
       signIn, signOut, setBarber, clearBarberSession, loadProfile, setStockEnabled, patchTenantConfig,
       rememberProfileUnlock, isProfileUnlocked,

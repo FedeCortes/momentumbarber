@@ -3,10 +3,12 @@ import { useParams } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Clock, Scissors, Users, CalendarDays, Copy, Check,
   Upload, FileText, MessageCircle, CalendarPlus, LogOut, Pencil, CreditCard,
-  ShieldCheck, X, User, ExternalLink,
+  ShieldCheck, X, User, ExternalLink, Sun, Moon,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import BarberPoleMark from '../../components/ui/BarberPoleMark'
+import BrandMark from '../../components/ui/BrandMark'
+import { useTheme } from '../../context/ThemeContext'
+import { applyBrandIcon } from '../../lib/brand'
 import Spinner from '../../components/ui/Spinner'
 import {
   fetchShop, fetchDays, fetchSlots, login, fetchMe, rename, cancelBooking, book, uploadReceipt,
@@ -145,6 +147,7 @@ export default function BookingPage() {
   }, [slug])
 
   useEffect(() => { if (shop?.name) document.title = `Reservá en ${shop.name}` }, [shop?.name])
+  useEffect(() => { if (shop) applyBrandIcon(shop.logo_url) }, [shop])
 
   function go(next) {
     setStep(next)
@@ -260,6 +263,17 @@ export default function BookingPage() {
 // ─────────────────────────────────────────────────────────────
 // Marco: encabezado fijo con la marca de la barbería
 // ─────────────────────────────────────────────────────────────
+function ThemeButton() {
+  const { theme, toggle } = useTheme()
+  return (
+    <button onClick={toggle} aria-label={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+      title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}
+      className="w-9 h-9 rounded-full border border-dark-400/60 hover:border-gold/40 flex items-center justify-center text-cream/60 hover:text-cream transition-colors">
+      {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+    </button>
+  )
+}
+
 function Shell({ shop, client, onMine, onHome, children }) {
   return (
     <div className="min-h-screen bg-dark-100">
@@ -267,12 +281,14 @@ function Shell({ shop, client, onMine, onHome, children }) {
               style={{ background: 'rgb(var(--surface-card) / 0.88)' }}>
         <div className="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
           <button onClick={onHome} className="flex items-center gap-3 min-w-0 text-left" disabled={!onHome}>
-            <BarberPoleMark size={34} className="shrink-0" />
+            <BrandMark logoUrl={shop?.logo_url} size={34} className="shrink-0" alt={shop?.name} />
             <div className="min-w-0">
               <p className="font-display text-[15px] font-semibold text-cream leading-tight truncate">{shop?.name || 'Reservas'}</p>
               <p className="text-[10px] text-cream/40 uppercase tracking-widest font-semibold">Turnos online</p>
             </div>
           </button>
+          <div className="flex items-center gap-2 shrink-0">
+          <ThemeButton />
           {onMine && (
             <button onClick={onMine}
               className="flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full border border-dark-400/60 hover:border-gold/40 transition-colors">
@@ -282,6 +298,7 @@ function Shell({ shop, client, onMine, onHome, children }) {
               <span className="text-xs font-semibold text-cream/75">{client ? 'Mis turnos' : 'Entrar'}</span>
             </button>
           )}
+          </div>
         </div>
       </header>
       <main className="max-w-md mx-auto px-4 pt-6 pb-16">{children}</main>

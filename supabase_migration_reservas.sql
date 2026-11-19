@@ -25,6 +25,7 @@ alter table public.barbers
 
 -- ── Ajustes de reservas (uno por barbería) ────────────────────
 alter table public.tenant_config
+  add column if not exists logo_url         text,                       -- logo de la barbería (ver supabase_migration_logo.sql)
   add column if not exists rsv_enabled      boolean not null default false,
   add column if not exists rsv_pay_link     text,                       -- link de pago (Mercado Pago, etc.)
   add column if not exists rsv_alias        text,
@@ -146,6 +147,7 @@ begin
 
   return json_build_object(
     'id', v_t.id, 'name', v_t.name, 'slug', v_t.slug,
+    'logo_url', v_c.logo_url,
     'enabled',  coalesce(v_c.rsv_enabled, false),
     'pay_link', v_c.rsv_pay_link,
     'alias',    v_c.rsv_alias, 'cbu', v_c.rsv_cbu,

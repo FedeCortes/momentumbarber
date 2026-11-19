@@ -3,10 +3,11 @@ import { Plus, Minus, Pencil, Trash2, Eye, EyeOff, Save, Check, X, ChevronDown, 
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { stockLevel } from '../../lib/stock'
-import { uploadCatalogPhoto, removeCatalogPhoto } from '../../lib/photo'
+import { uploadCatalogPhoto, removeCatalogPhoto, uploadBrandLogo, removeBrandLogo } from '../../lib/photo'
 import ConfirmDialog from '../../components/ui/ConfirmDialog'
 import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
+import BrandMark from '../../components/ui/BrandMark'
 import { productGeneral, drinkGeneral, catalogCut, cutLabel, hasOwnCommission } from '../../lib/earnings'
 
 // Miniatura de foto de un ítem del catálogo (producto o bebida), 56px. Tocarla abre
@@ -867,6 +868,76 @@ function PaymentMethodSection({ tenantId }) {
   )
 }
 
+// Logo de la barbería: se ve en el encabezado de la app, en la pestaña del
+// navegador y en la página de reservas. Sin logo, queda el poste de Momentum.
+function LogoSection({ tenantId }) {
+  const { brandLogo, setBrandLogo } = useAuth()
+  const fileRef = useRef(null)
+  const [busy, setBusy] = useState(false)
+
+  async function save(url) {
+    const { error } = await supabase.from('tenant_config')
+      .upsert({ tenant_id: tenantId, logo_url: url, updated_at: new Date().toISOString() }, { onConflict: 'tenant_id' })
+    if (error) throw new Error(/logo_url/.test(error.message) ? 'Falta correr la migración del logo en Supabase' : 'No se pudo guardar')
+    setBrandLogo(url)
+  }
+
+  async function pick(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setBusy(true)
+    try {
+      const url = await uploadBrandLogo(supabase, { tenantId, file })
+      await save(url)
+      toast.success('Logo actualizado')
+    } catch (err) {
+      toast.error(err.message || 'No se pudo subir el logo')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function remove() {
+    setBusy(true)
+    try {
+      await removeBrandLogo(supabase, { tenantId })
+      await save(null)
+      toast.success('Volvió el logo de Momentum')
+    } catch (err) {
+      toast.error(err.message || 'No se pudo quitar el logo')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center gap-4">
+        <BrandMark logoUrl={brandLogo} size={64} className="shrink-0" />
+        <div className="flex-1 min-w-0">
+          <h3 className="font-display text-lg text-cream">Logo de la barbería</h3>
+          <p className="text-cream/40 text-xs mt-1 leading-relaxed">
+            Aparece arriba en la app, en la pestaña del navegador y en tu página de reservas.
+            Usá una imagen cuadrada.
+          </p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={pick} />
+            <button onClick={() => fileRef.current?.click()} disabled={busy} className="btn-outline-gold !px-4 !py-2 flex items-center gap-1.5">
+              <Camera size={14} /> {busy ? 'Subiendo…' : brandLogo ? 'Cambiar logo' : 'Subir logo'}
+            </button>
+            {brandLogo && (
+              <button onClick={remove} disabled={busy} className="btn-ghost !px-3 !py-2 flex items-center gap-1.5">
+                <ImageOff size={14} /> Quitar
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ConfigPage() {
   const { tenant, stockEnabled, setStockEnabled } = useAuth()
   const [adminPass, setAdminPass] = useState('')
@@ -907,6 +978,8 @@ export default function ConfigPage() {
     <div>
       <h1 className="section-title mb-1">Configuración</h1>
       <p className="section-sub mb-6">Catálogos y ajustes de {tenant.name}</p>
+
+      <LogoSection tenantId={tenant.id} />
 
       {/* ── Control de stock ── */}
       <div className="card mb-4">

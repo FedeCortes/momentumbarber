@@ -1,6 +1,6 @@
 import { Outlet, useNavigate, NavLink } from 'react-router-dom'
 import { LogOut, PlusCircle, ClipboardList, Sun, Moon, HelpCircle } from 'lucide-react'
-import BarberPoleMark from '../ui/BarberPoleMark'
+import BrandMark from '../ui/BrandMark'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import toast from 'react-hot-toast'
@@ -22,7 +22,7 @@ function ThemeToggle() {
 }
 
 export default function BarberLayout() {
-  const { clearBarberSession, signOut, barberSession, tenant } = useAuth()
+  const { clearBarberSession, signOut, barberSession, tenant, brandLogo } = useAuth()
   const navigate = useNavigate()
 
   function handleSwitch() {
@@ -54,7 +54,7 @@ export default function BarberLayout() {
       >
         {/* Logo + nombre */}
         <div className="flex items-center gap-3">
-          <BarberPoleMark size={36} className="shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
+          <BrandMark logoUrl={brandLogo} size={36} className="shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           <div>
             <p className="font-display text-sm font-semibold text-cream leading-tight">
               {tenant?.name || 'Momentum'}
