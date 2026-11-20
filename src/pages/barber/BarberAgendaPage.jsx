@@ -161,7 +161,7 @@ export default function BarberAgendaPage() {
                 {busy ? <Spinner size={15} /> : <ClipboardCheck size={16} />} Asistió: cargar a Mis registros
               </button>
             )}
-            {!loaded[open.id] && dateKeyAR(open.starts_at) >= dateKeyAR() && (
+            {!loaded[open.id] && (
               <button onClick={() => { setMoving(open); setOpen(null) }} className="btn-outline-gold">Cambiar horario</button>
             )}
           </div>

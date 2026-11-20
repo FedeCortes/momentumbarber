@@ -4,6 +4,8 @@ import { CalendarCheck, Check, ClipboardList, AlertTriangle, ChevronDown, Chevro
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import Spinner from '../ui/Spinner'
+import NoShowChoice from './NoShowChoice'
+import MoveBooking from './MoveBooking'
 import { money, timeAR, fromLocalAR, addDaysKey, dayParts, dateKeyAR } from '../../lib/booking'
 import { loadBookingSaleContext, createSaleFromBooking, createNoShowSale, isNoShowSale, prepaidMethod, bookingSplit } from '../../lib/bookingSales'
 
@@ -16,7 +18,7 @@ import { loadBookingSaleContext, createSaleFromBooking, createNoShowSale, isNoSh
 // a la tarjeta de Transferencia y a lo que se le paga a cada barbero.
 // Un turno ya cargado no se puede cargar otra vez (lo frena la base).
 // ─────────────────────────────────────────────────────────────────────────────
-export default function ClosingBookings({ tenantId, from, to, sales, onChanged }) {
+export default function ClosingBookings({ tenantId, tenantSlug, tenantName, from, to, sales, onChanged }) {
   const [bookings, setBookings] = useState(null)
   const [pending, setPending]   = useState(0)
   const [drafted, setDrafted]   = useState({})   // booking_id → true (está en registros del barbero)
@@ -25,6 +27,8 @@ export default function ClosingBookings({ tenantId, from, to, sales, onChanged }
   const [busy, setBusy]         = useState(null) // id | 'all'
   const [open, setOpen]         = useState(true)
   const [reload, setReload]     = useState(0)
+  const [noShowFor, setNoShowFor] = useState(null)
+  const [moving, setMoving]     = useState(null)
 
   useEffect(() => {
     if (!tenantId) return
@@ -78,7 +82,6 @@ export default function ClosingBookings({ tenantId, from, to, sales, onChanged }
 
   async function noShowOne(bk) {
     if (!ctx) return
-    if (!confirm(`¿${bk.customer_name} no vino? La plata ya cobrada queda para el local (sin comisión).`)) return
     setBusy(bk.id)
     try {
       await createNoShowSale(bk, ctx, method?.id)
@@ -178,7 +181,7 @@ export default function ClosingBookings({ tenantId, from, to, sales, onChanged }
                         )}
                         <div className="flex gap-1">
                           {!drafted[bk.id] && (
-                            <button onClick={() => noShowOne(bk)} disabled={!ctx || !ready || busy != null}
+                            <button onClick={() => setNoShowFor(bk)} disabled={!ctx || !ready || busy != null}
                               className="px-2 py-1.5 rounded-lg text-[11px] font-semibold text-red-400/90 border border-red-500/30 hover:bg-red-500/10">
                               No vino
                             </button>
@@ -194,6 +197,17 @@ export default function ClosingBookings({ tenantId, from, to, sales, onChanged }
                 )
               })}
             </div>
+          )}
+
+          {noShowFor && (
+            <NoShowChoice booking={noShowFor} onClose={() => setNoShowFor(null)}
+              onReschedule={() => { setMoving(noShowFor); setNoShowFor(null) }}
+              onKeep={() => { const bk = noShowFor; setNoShowFor(null); noShowOne(bk) }} />
+          )}
+          {moving && tenantSlug && (
+            <MoveBooking booking={moving} tenantSlug={tenantSlug} tenantName={tenantName} barbers={ctx?.barbers || []}
+              onClose={() => setMoving(null)}
+              onMoved={() => { setReload(r => r + 1); onChanged?.() }} />
           )}
 
           {missing.length > 1 && (

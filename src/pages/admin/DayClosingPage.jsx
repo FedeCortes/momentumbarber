@@ -368,7 +368,7 @@ export default function DayClosingPage() {
       {/* Turnos reservados online: detalle y carga a ventas (no aparece si no hay) */}
       {!loading && !loadError && (
         <div className="mt-5">
-          <ClosingBookings tenantId={tenant?.id} from={from} to={to} sales={sales} onChanged={load} />
+          <ClosingBookings tenantId={tenant?.id} tenantSlug={tenant?.slug} tenantName={tenant?.name} from={from} to={to} sales={sales} onChanged={load} />
         </div>
       )}
 

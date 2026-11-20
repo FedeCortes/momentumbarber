@@ -3,6 +3,7 @@ import { Ban, CalendarX2, Lock, Check, UserX, Clock, Undo2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import Spinner from '../ui/Spinner'
+import NoShowChoice from './NoShowChoice'
 import { fromLocalAR, addDaysKey, timeAR, money } from '../../lib/booking'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,6 +27,7 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
   const [err, setErr]     = useState(false)
   const [reload, setReload] = useState(0)
   const [busy, setBusy]   = useState(null)   // id de casillero o barbero en curso
+  const [noShowFor, setNoShowFor] = useState(null)   // turno al que se le está marcando «No vino»
 
   const barberIds = barbers.map(b => b.id).join(',')
 
@@ -154,10 +156,7 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
     }
   }
   const attend = bk => run('att', onAttend, bk)
-  const noShow = bk => {
-    if (!confirm(`¿${bk.customer_name} no vino?\n\nEl turno ya estaba pagado: la plata queda para el local y se suma al cierre del día (sin comisión para el barbero).`)) return
-    run('ns', onNoShow, bk)
-  }
+  const noShow = bk => setNoShowFor(bk)
   const undo = (bk, went) => {
     const what = went === 'noshow' ? '«No vino»' : '«Asistió»'
     if (!confirm(`¿Deshacer ${what} de ${bk.customer_name}?\n\nSe saca de ${went === 'registro' ? 'los registros' : 'ventas y del cierre'} y el turno vuelve a quedar pendiente de marcar.`)) return
@@ -360,6 +359,12 @@ export default function DayAgenda({ tenantId, barbers, day, onOpenBooking, onAtt
           </div>
         )
       })}
+
+      {noShowFor && (
+        <NoShowChoice booking={noShowFor} onClose={() => setNoShowFor(null)}
+          onReschedule={() => { const bk = noShowFor; setNoShowFor(null); onMove?.(bk) }}
+          onKeep={() => { const bk = noShowFor; setNoShowFor(null); run('ns', onNoShow, bk) }} />
+      )}
 
       {off.length > 0 && (
         <p className="text-cream/35 text-xs px-1">No atienden este día: {off.map(r => r.barber.name).join(', ')}</p>

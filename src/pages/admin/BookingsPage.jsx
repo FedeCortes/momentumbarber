@@ -11,6 +11,7 @@ import Spinner from '../../components/ui/Spinner'
 import EmptyState from '../../components/ui/EmptyState'
 import DayAgenda from '../../components/booking/DayAgenda'
 import MoveBooking from '../../components/booking/MoveBooking'
+import NoShowChoice from '../../components/booking/NoShowChoice'
 import { loadBookingSaleContext, createSaleFromBooking, createNoShowSale, undoBookingSale, undoBookingDraft, bookingLinkState } from '../../lib/bookingSales'
 import {
   STATUS, WEEKDAYS, money, durationLabel, timeAR, longDateAR, dateKeyAR, addDaysKey, dayParts,
@@ -96,6 +97,7 @@ function ListTab({ tenant, goSettings, goAgenda }) {
   const [after, setAfter]       = useState(null)    // { booking, action } para avisar por WhatsApp
   const [busy, setBusy]         = useState(null)
   const [moving, setMoving]     = useState(null)    // turno que se está moviendo
+  const [noShowFor, setNoShowFor] = useState(null)  // elegir: reprogramar o quedarse la plata
 
   useEffect(() => {
     let alive = true
@@ -332,12 +334,12 @@ function ListTab({ tenant, goSettings, goAgenda }) {
               </button>
             )}
             {receipt.booking.status === 'confirmed' && (
-              <button onClick={() => { if (confirm('¿No vino? La plata ya cobrada queda para el local y suma al cierre (sin comisión).')) noShow(receipt.booking) }}
+              <button onClick={() => { setNoShowFor(receipt.booking); setReceipt(null) }}
                 className="w-full mt-2 py-2 rounded-xl text-red-400/90 font-semibold text-sm hover:bg-red-500/10 flex items-center justify-center gap-1.5">
                 Pagó pero no vino
               </button>
             )}
-            {['pending', 'confirmed'].includes(receipt.booking.status) && dateKeyAR(receipt.booking.starts_at) >= dateKeyAR() && (
+            {['pending', 'confirmed'].includes(receipt.booking.status) && (
               <button onClick={() => { setMoving(receipt.booking); setReceipt(null) }}
                 className="btn-outline-gold w-full mt-2 flex items-center justify-center gap-1.5">
                 <CalendarDays size={15} /> Cambiar horario (día, hora o barbero)
@@ -346,6 +348,12 @@ function ListTab({ tenant, goSettings, goAgenda }) {
           </>
         )}
       </Modal>
+
+      {noShowFor && (
+        <NoShowChoice booking={noShowFor} onClose={() => setNoShowFor(null)}
+          onReschedule={() => { setMoving(noShowFor); setNoShowFor(null) }}
+          onKeep={() => { const bk = noShowFor; setNoShowFor(null); noShow(bk) }} />
+      )}
 
       {moving && (
         <MoveBooking booking={moving} tenantSlug={tenant.slug} tenantName={tenant.name} barbers={barberList}
